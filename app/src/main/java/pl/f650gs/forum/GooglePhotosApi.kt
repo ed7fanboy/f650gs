@@ -69,6 +69,5 @@ class GooglePhotosApi(private val accessToken: String) {
     companion object {
         private const val BASE = "https://photoslibrary.googleapis.com/v1"
         const val SCOPE_APPEND = "https://www.googleapis.com/auth/photoslibrary.appendonly"
-        const val SCOPE_READ_OWN = "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata"
     }
 }

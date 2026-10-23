@@ -176,10 +176,13 @@ internal fun MainActivity.handlePhotoResult(requestCode: Int, resultCode: Int, d
     return true
 }
 
-/** A Google token for the app's own album; the first time Google asks for the account and consent. */
+/**
+ * A Google token for the app's own album; the first time Google asks for the account and consent.
+ * One permission only: adding new photos and creating the app's album (it cannot see other photos).
+ */
 private fun MainActivity.authorizePhotos() {
     val request = AuthorizationRequest.builder()
-        .setRequestedScopes(listOf(Scope(GooglePhotosApi.SCOPE_APPEND), Scope(GooglePhotosApi.SCOPE_READ_OWN)))
+        .setRequestedScopes(listOf(Scope(GooglePhotosApi.SCOPE_APPEND)))
         .build()
     Identity.getAuthorizationClient(this).authorize(request)
         .addOnSuccessListener { result ->

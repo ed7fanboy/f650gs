@@ -66,6 +66,7 @@
 - Download button in the photo preview: saves the original file to Pictures/f650gs.pl.
 - Emoji from the Android keyboard: the forum stores 3-byte text only, so posts with emoji did not go through; they now become the forum's emoticons in posts and ASCII codes in titles and the Chatbox, the rest is dropped.
 - Saved test pages anonymised (names, titles, texts, ids, files), also in the published history.
+- 0.17.1: photos ask Google for one permission only, `photoslibrary.appendonly` (add new photos, create the app's album); the unused read permission is gone.
 
 ## Known limitations
 
