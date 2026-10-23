@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- The forum embeds user supplied images from legacy HTTP hosts (e.g. old classifieds).
+         Allow those image requests as well as the forum's own HTTP pages. -->
+    <base-config cleartextTrafficPermitted="true" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">f650gs.pl</domain>
+    </domain-config>
+</network-security-config>

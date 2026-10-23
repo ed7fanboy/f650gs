@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+app/build/
+
+# Never publish
+password.txt
+*.keystore
+*.jks
+.kotlin/
+screenshots/
+docs/

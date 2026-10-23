@@ -1,0 +1,356 @@
+package pl.f650gs.forum
+
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Parser checks on saved, anonymised forum pages (app/src/test/resources/pages, refreshed with
+ * tools/sanitize_fixtures.py). A failure here after a forum update shows which screen broke.
+ */
+class ForumParserTest {
+    private fun page(name: String, url: String): Document {
+        val stream = javaClass.classLoader!!.getResourceAsStream("pages/$name") ?: error("Missing fixture $name")
+        return stream.use { Jsoup.parse(it, "UTF-8", url) }
+    }
+
+    private val topicUrl = Regex("""^http://f650gs\.pl/topic/\d+-""")
+    private val profileUrl = Regex("""^http://f650gs\.pl/profile/\d+-""")
+
+    @Test fun activityStreamListsTopicsWithAuthors() {
+        val items = ForumParser.activity(page("discover_in.html", "http://f650gs.pl/discover/"))
+        assertTrue("items: ${items.size}", items.size >= 20)
+        items.forEach { assertTrue(it.url, topicUrl.containsMatchIn(it.url)) }
+        assertTrue(items.all { it.title.isNotBlank() })
+        assertTrue(items.count { it.author.isNotBlank() } >= items.size - 2)
+        assertTrue(items.count { profileUrl.containsMatchIn(it.authorUrl) } >= items.size - 2)
+    }
+
+    @Test fun categoriesListForums() {
+        val categories = ForumParser.categories(page("index.html", "http://f650gs.pl/"))
+        assertTrue(categories.size >= 3)
+        val forums = categories.flatMap { it.forums }
+        assertTrue(forums.all { it.url.startsWith("http://f650gs.pl/forum/") && it.title.isNotBlank() })
+        assertTrue(forums.any { it.title == "Przywitalnia" })
+    }
+
+    @Test fun forumListsTopics() {
+        val forum = ForumParser.forum(page("forum.html", "http://f650gs.pl/forum/7-sprzedam/"))
+        assertEquals("Sprzedam", forum.title)
+        assertTrue(forum.topics.size >= 10)
+        forum.topics.forEach { assertTrue(it.url, topicUrl.containsMatchIn(it.url)) }
+        assertTrue(forum.sorts.size >= 5)
+        assertEquals(1, forum.sorts.count { it.selected })
+        assertTrue(forum.sorts.all { it.url.contains("sortby=") })
+        assertTrue(forum.pager.label, forum.pager.label.startsWith("Strona 1 z "))
+        assertTrue(forum.pager.nextUrl, forum.pager.nextUrl.contains("page=2"))
+        assertTrue(forum.pager.lastUrl, Regex("""page=\d+""").containsMatchIn(forum.pager.lastUrl))
+        assertEquals("", forum.pager.prevUrl)
+        assertEquals("", forum.pager.firstUrl)
+        assertFalse(forum.canPost) // guest page
+    }
+
+    @Test fun bareLinkTextLosesDoubleEscapedAmpersands() {
+        val body = Jsoup.parseBodyFragment(
+            "<p><a href=\"https://x.pl/?a=1&amp;b=2\">https://x.pl/?a=1&amp;amp;b=2</a> <a href=\"/t\">Tom &amp;amp; Jerry</a></p>",
+            "http://f650gs.pl/",
+        ).body()
+        val html = ForumParser.safePostHtml(body)
+        assertTrue(html, html.contains(">https://x.pl/?a=1&amp;b=2</a>"))
+        assertTrue("plain link text stays as written: $html", html.contains("Tom &amp;amp; Jerry"))
+    }
+
+    @Test fun parentSectionListsSubforums() {
+        val forum = ForumParser.forum(page("forum_parent.html", "http://f650gs.pl/forum/18-dzia%C5%82-techniczny/"))
+        assertTrue(forum.topics.isEmpty())
+        assertTrue("subforums: ${forum.subforums.size}", forum.subforums.size >= 2)
+        assertTrue(forum.subforums.all { it.url.startsWith("http://f650gs.pl/forum/") && it.title.isNotBlank() })
+        assertTrue(forum.subforums.any { it.title == "Mechanika ogólna" })
+    }
+
+    @Test fun topicPostsPagingAndReplyForm() {
+        val url = "http://f650gs.pl/topic/13836-kilka-klatek-wkolo-komina/page/199/"
+        val topic = ForumParser.topic(page("topic_in.html", url), url)
+        assertTrue(topic.posts.isNotEmpty())
+        topic.posts.forEach { post ->
+            assertTrue(post.id > 0)
+            assertTrue(post.author.isNotBlank())
+            assertTrue(post.authorUrl, profileUrl.containsMatchIn(post.authorUrl))
+            assertFalse(post.html.contains("<script"))
+            assertTrue("signed-in page has like links", post.likeUrl.contains("do=reactComment"))
+        }
+        assertTrue(topic.pager.label, topic.pager.label.startsWith("Strona 199 z"))
+        assertTrue(topic.pager.prevUrl, topic.pager.prevUrl.contains("page=198"))
+        assertTrue(topic.pager.firstUrl, topic.pager.firstUrl.isNotBlank() && !topic.pager.firstUrl.contains("page=198"))
+        assertEquals(198 * 25 + 1, topic.pager.firstNumber)
+        val form = assertNotNullAndGet(topic.replyForm)
+        assertTrue(form.fields.containsKey("csrfKey"))
+        assertTrue(form.editor.isNotBlank())
+        assertTrue(form.contentId.isNotBlank())
+    }
+
+    @Test fun topicFocusOnlyForPostsOnThePage() {
+        val url = "http://f650gs.pl/topic/13940-ukryty-kanister-1litr-w-dziobie-f650gs-twin/"
+        val document = page("mytopic.html", url)
+        val first = ForumParser.topic(document, url).posts.first()
+        assertEquals(first.id, ForumParser.topic(document, url, first.id).focusPostId)
+        assertEquals(0L, ForumParser.topic(document, url, 1).focusPostId)
+    }
+
+    @Test fun ownPostsHaveEditLinks() {
+        // The forum only shows "Edytuj" while the edit window is open, so this uses a minimal post.
+        fun post(id: Int, edit: String) = "<article class='ipsComment' id='elComment_$id'><div class='cAuthorPane_author'>" +
+            "<a href='/profile/1-a/'>A</a></div>$edit<div data-role='commentContent'><p>Tekst</p></div></article>"
+        val document = Jsoup.parse(post(1, "<a href='/topic/1-x/?do=editComment&amp;comment=1'>Edytuj</a>") + post(2, ""), "http://f650gs.pl/topic/1-x/")
+        val posts = ForumParser.topic(document, "http://f650gs.pl/topic/1-x/").posts
+        assertEquals("http://f650gs.pl/topic/1-x/?do=editComment&comment=1", posts[0].editUrl)
+        assertEquals("", posts[1].editUrl)
+    }
+
+    @Test fun accountOnlyWhenSignedIn() {
+        val account = assertNotNullAndGet(ForumParser.account(page("discover_in.html", "http://f650gs.pl/discover/")))
+        assertEquals("Ja", account.name)
+        assertTrue(account.logoutUrl.contains("logout"))
+        assertTrue(profileUrl.containsMatchIn(account.profileUrl))
+        assertNull(ForumParser.account(page("index.html", "http://f650gs.pl/")))
+    }
+
+    @Test fun countersReadHeaderBadges() {
+        val counters = ForumParser.counters(page("discover_in.html", "http://f650gs.pl/discover/"))
+        assertTrue(counters.inbox >= 0 && counters.notifications >= 0)
+        assertTrue(counters.unreadTopics > 0)
+    }
+
+    @Test fun profileHeaderStatsFieldsAndActivity() {
+        val url = "http://f650gs.pl/profile/1082-marcin-n/"
+        val profile = ForumParser.profile(page("profile_in.html", url), url)
+        assertEquals("1082", profile.id)
+        assertEquals("Członek 10", profile.name)
+        assertTrue(profile.photo.startsWith("http"))
+        assertTrue(profile.stats.any { it.first == "Reputacja" })
+        assertTrue(profile.stats.any { it.first == "Rejestracja" })
+        assertTrue(profile.fields.any { (label, value) -> label == "Lokalizacja" && value.startsWith("Tekst ") })
+        assertTrue(profile.canMessage)
+        assertTrue(profile.activity.isNotEmpty())
+    }
+
+    @Test fun conversationList() {
+        val items = ForumParser.conversations(page("messenger.html", "http://f650gs.pl/messenger/"))
+        assertTrue(items.size >= 5)
+        items.forEach { assertTrue(it.url, Regex("""/messenger/\d+""").containsMatchIn(it.url)) }
+        assertTrue(items.all { it.title.isNotBlank() })
+    }
+
+    @Test fun conversationMessagesAndReplyForm() {
+        val url = "http://f650gs.pl/messenger/1/"
+        val page = ForumParser.conversation(page("conv.html", url), url)
+        assertTrue(page.messages.isNotEmpty())
+        assertEquals("901", page.myMemberId)
+        assertTrue(page.messages.all { it.authorId.isNotBlank() })
+        assertTrue(page.messages.any { it.authorId == page.myMemberId })
+        assertNotNull(page.replyForm)
+    }
+
+    @Test fun composeFormIsAddressed() {
+        val compose = ForumParser.composeForm(page("compose.html", "http://f650gs.pl/messenger/compose/?to=4057"))
+        assertEquals("Ja", compose.recipient)
+        assertEquals("messenger_content", compose.form.editor)
+        assertTrue(compose.form.fields.containsKey("csrfKey"))
+    }
+
+    @Test fun searchResults() {
+        val items = ForumParser.search(page("search.html", "http://f650gs.pl/search/?q=kanister"))
+        assertTrue(items.isNotEmpty())
+        items.forEach { assertTrue(it.url, topicUrl.containsMatchIn(it.url)) }
+    }
+
+    @Test fun postHtmlIsSanitised() {
+        val body = Jsoup.parse(
+            "<div id=b><p onclick='x()'>Hi<script>bad()</script></p>" +
+                "<a href='javascript:alert(1)'>bad</a><a href='http://ok.pl/' target='_blank'>ok</a>" +
+                "<iframe src='https://www.youtube.com/embed/abc_DEF-1?x=1'></iframe><iframe src='http://evil.example/'></iframe>" +
+                "<img data-src='/uploads/a.jpg'><img src='javascript:x'></div>",
+            "http://f650gs.pl/topic/1-x/",
+        ).getElementById("b")!!
+        val html = ForumParser.safePostHtml(body)
+        assertFalse(html.contains("script"))
+        assertFalse(html.contains("onclick"))
+        assertFalse(html.contains("javascript:"))
+        assertFalse(html.contains("target="))
+        assertFalse(html.contains("evil.example"))
+        assertTrue(html.contains("https://www.youtube.com/watch?v=abc_DEF-1"))
+        assertTrue(html.contains("src=\"http://f650gs.pl/uploads/a.jpg\""))
+    }
+
+    @Test fun urlsStayOnTheForum() {
+        assertEquals("http://f650gs.pl/topic/1-x/", ForumParser.safeForumUrl("/topic/1-x/"))
+        assertEquals("http://f650gs.pl/a?b=1#c", ForumParser.safeForumUrl("https://f650gs.pl/a?b=1#c"))
+        assertEquals("http://f650gs.pl/", ForumParser.safeForumUrl("http://evil.example/f650gs.pl"))
+        assertEquals("http://f650gs.pl/", ForumParser.safeForumUrl("not a url"))
+    }
+
+    @Test fun chatboxAnswers() {
+        val json = """{"content":"7~~#~~12~~#~~Jan~~#~~x~~#~~http://f650gs.pl/p.png~~#~~x~~#~~Cześć~~#~~1700000000~~||~~8~~#~~13~~#~~Ola~~#~~x~~#~~~~#~~x~~#~~Hej~~#~~1700000060","lastID":"8"}"""
+        val batch = ForumParser.chatBatch(json, 0)
+        assertEquals(8L, batch.lastId)
+        assertEquals(listOf("Cześć", "Hej"), batch.messages.map { it.text })
+        assertEquals("12", batch.messages.first().memberId)
+        assertEquals("" to null, ForumParser.chatSession("<html>signed out</html>"))
+        assertEquals("12" to "0123456789abcdef0123456789abcdef",
+            ForumParser.chatSession("memberID: 12, url: '?csrfKey=0123456789abcdef0123456789abcdef'"))
+    }
+
+    @Test fun memberSearchAnswer() {
+        val hits = ForumParser.members("""[{"id":"839","value":"Mard","name":"M&amp;rd","photo":"http://f650gs.pl/p.png"}]""")
+        assertEquals(listOf(MemberHit("839", "M&rd", "http://f650gs.pl/p.png")), hits)
+    }
+
+    @Test fun imageCountSkipsEmoticonsAndQuotes() {
+        val html = "<p>Widok <img src=\"https://lh3.googleusercontent.com/a=w1600-h1600\"> i " +
+            "<img data-emoticon=\"\" src=\"http://f650gs.pl/uploads/emoticons/smile.png\"> " +
+            "<img src=\"http://emoji.tapatalk-cdn.com/emoji1.png\"></p>" +
+            "<blockquote><p><img src=\"https://example.com/quoted.jpg\"></p></blockquote>" +
+            "<p><img src=\"http://f650gs.pl/uploads/monthly_2026_10/photo.jpg\"></p>"
+        assertEquals(2, ForumParser.imageCount(html))
+        assertEquals(0, ForumParser.imageCount("<p>Sam tekst</p>"))
+    }
+
+    @Test fun imagesLabelUsesPolishPlurals() {
+        assertEquals(listOf("1 zdjęcie", "2 zdjęcia", "5 zdjęć", "12 zdjęć", "22 zdjęcia"), listOf(1, 2, 5, 12, 22).map(::imagesLabel))
+    }
+
+    private fun <T> assertNotNullAndGet(value: T?): T {
+        assertNotNull(value)
+        return value!!
+    }
+
+    @Test fun notificationsListEntriesAndNextPage() {
+        val page = ForumParser.notifications(page("notifications.html", "http://f650gs.pl/notifications/"))
+        assertEquals(2, page.items.size)
+        val (quote, reaction) = page.items
+        assertTrue(quote.unread)
+        assertFalse(reaction.unread)
+        assertEquals("Tester", quote.author)
+        assertTrue(quote.url, topicUrl.containsMatchIn(quote.url))
+        assertTrue(quote.photo.startsWith("http://f650gs.pl/uploads/"))
+        assertEquals("29 minut temu", quote.time)
+        assertEquals("Drugi – reakcja na Twój wpis w temacie Przykładowy temat", reaction.text)
+        assertEquals("http://f650gs.pl/notifications/?page=2", page.nextUrl)
+    }
+
+    @Test fun signUpFormReadsEveryField() {
+        val form = ForumParser.signUpForm(page("register.html", "http://f650gs.pl/register/"))
+        assertNotNull(form)
+        form!!
+        assertEquals("http://f650gs.pl/register/", form.action)
+        assertTrue(form.hidden.containsKey("csrfKey"))
+        assertEquals("0", form.hidden["reg_agreed_terms"])
+        val byName = form.fields.associateBy { it.name }
+        assertEquals("password", byName["password"]?.kind)
+        assertEquals("email", byName["email_address"]?.kind)
+        assertEquals(26, byName["username"]?.maxLength)
+        assertEquals("Nazwa użytkownika", byName["username"]?.label)
+        val sex = byName["core_pfield_5"]!!
+        assertEquals("select", sex.kind)
+        assertEquals("Nie powiem", sex.value)
+        assertEquals(3, sex.options.size)
+        val question = byName["q_and_a"]!!
+        assertTrue(question.required)
+        assertTrue(question.label, question.label.contains("F650GS"))
+        val terms = byName["reg_agreed_terms_checkbox"]!!
+        assertEquals("checkbox", terms.kind)
+        assertEquals("", terms.value)
+        assertTrue(terms.link, terms.link.endsWith("/terms/"))
+        assertEquals("1", byName["reg_admin_mails_checkbox"]?.value)
+        assertFalse(byName["core_pfield_12"]!!.required)
+    }
+
+    @Test fun notificationSettingsReadSwitchesAndMatrix() {
+        val form = ForumParser.notificationSettings(page("notification_options.html", "http://f650gs.pl/notifications/options/"))
+        assertNotNull(form)
+        form!!
+        assertEquals("http://f650gs.pl/notifications/options/", form.action)
+        assertEquals("0", form.hidden["member_follow[member_notifications_inline]"])
+        val titles = form.sections.map { it.title }
+        assertTrue(titles.toString(), titles.containsAll(listOf("Automatycznie obserwowana zawartość", "Profil", "Komunikator", "Ogólne")))
+        val tracking = form.sections.first { it.title.startsWith("Metoda") }.rows.map { it.toggles.single() }
+        assertTrue(tracking.all { it.radio && it.name == "auto_track_type" })
+        assertEquals(1, tracking.count { it.checked })
+        val quote = form.sections.first { it.title == "Ogólne" }.rows.first { it.title.contains("zacytowaniu") }
+        assertEquals(listOf("Powiadomienie", "E-mail"), quote.toggles.map { it.label })
+        assertEquals("quote[member_notifications_inline_checkbox]", quote.toggles.first().name)
+        val locked = form.sections.first { it.title == "Profil" }.rows.first { it.title.contains("komentarzach") }
+        assertTrue(locked.toggles.none { it.enabled })
+    }
+
+    private fun nativePage(name: String, url: String) = ForumParser.nativePage(page(name, url), url)
+
+    private fun NativePage.form() = blocks.filterIsInstance<PageBlock.Form>().single().form
+
+    @Test fun settingsOverviewListsAccountRowsAndSideMenu() {
+        val page = nativePage("settings.html", "http://f650gs.pl/settings/")
+        assertNotNull(page)
+        page!!
+        assertEquals("Ustawienia", page.title)
+        val rows = page.blocks.filterIsInstance<PageBlock.Links>().flatMap { it.items }
+        val email = rows.first { it.title == "Adres e-mail" }
+        assertEquals("user@example.com", email.detail)
+        assertEquals("http://f650gs.pl/settings/email/", email.url)
+        // The side menu leaves out the page itself.
+        assertTrue(rows.any { it.url == "http://f650gs.pl/settings/devices/" })
+        assertTrue(rows.none { it.title == "Przegląd" })
+        assertEquals(1, rows.count { it.url == "http://f650gs.pl/settings/email/" })
+    }
+
+    @Test fun passwordFormHasThreeRequiredPasswords() {
+        val form = nativePage("settings_password.html", "http://f650gs.pl/settings/password/")!!.form()
+        val fields = form.items.filterIsInstance<FormItem.Input>().map { it.field }
+        assertEquals(listOf("current_password", "new_password", "confirm_new_password"), fields.map { it.name })
+        assertTrue(fields.all { it.kind == "password" && it.required })
+        assertEquals("Zapisz", form.submit)
+        assertEquals("http://f650gs.pl/settings/password/", form.action)
+    }
+
+    @Test fun emailFormShowsCurrentAddressReadOnly() {
+        val page = nativePage("settings_email.html", "http://f650gs.pl/settings/email/")!!
+        assertTrue(page.blocks.any { it is PageBlock.Text && it.text.contains("ponowna aktywacja") })
+        val items = page.form().items
+        assertEquals(FormItem.Info("Bieżący adres e-mail", "user@example.com"), items.first())
+        assertEquals("email", (items[1] as FormItem.Input).field.kind)
+    }
+
+    @Test fun ignoreFormHasMemberBoxAndIgnoreChoices() {
+        val page = nativePage("ignore.html", "http://f650gs.pl/ignore/")!!
+        val form = page.form()
+        val member = (form.items.first() as FormItem.Input).field
+        assertEquals("member", member.name)
+        assertTrue(member.label, member.label.startsWith("Znajdź użytkownika"))
+        assertTrue(member.memberSearch)
+        assertEquals("text", member.kind)
+        val choices = form.items.filterIsInstance<FormItem.Choices>().single()
+        assertEquals("Ignoruj", choices.title)
+        assertEquals(5, choices.rows.size)
+        assertEquals("ignore_topics_checkbox", choices.rows.first().toggles.single().name)
+        assertEquals("0", form.hidden["ignore_topics"])
+        assertEquals("Dodaj użytkownika", form.submit)
+        assertTrue(page.blocks.any { it is PageBlock.Text && it.text.contains("Brak wyników") })
+    }
+
+    @Test fun pagesWithThePostEditorStayOnTheWeb() {
+        assertNull(nativePage("topic_in.html", "http://f650gs.pl/topic/1-x/"))
+    }
+
+    @Test fun confirmStepIsFoundWithItsHiddenFields() {
+        val confirm = ForumParser.confirmForm(page("confirm.html", "http://f650gs.pl/ignore/?do=remove&id=901&csrfKey=0"))
+        assertNotNull(confirm)
+        assertEquals("http://f650gs.pl/ignore/?do=remove&id=901", confirm!!.action)
+        assertEquals("1", confirm.fields["wasConfirmed"])
+        assertTrue(confirm.fields.containsKey("csrfKey"))
+        assertNull(ForumParser.confirmForm(page("ignore.html", "http://f650gs.pl/ignore/")))
+    }
+}
