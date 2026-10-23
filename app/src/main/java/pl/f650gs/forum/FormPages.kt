@@ -45,7 +45,7 @@ internal fun MainActivity.renderForumPage(page: NativePage) {
                 letterSpacing = 0.08f
             }, margin(top = 14, bottom = 8))
             is PageBlock.Text -> content.addView(label(block.text, 13f, MUTED), margin(top = 2, bottom = 8))
-            is PageBlock.Links -> block.items.forEach { content.addView(pageLinkCard(it)) }
+            is PageBlock.Links -> block.items.forEach { content.addView(pageLinkCard(it, block.items)) }
             is PageBlock.Form -> content.addView(formCard(block.form))
         }
     }
@@ -59,7 +59,7 @@ private fun MainActivity.notice(text: String, color: Int) = label(text, 14f, col
     layoutParams = margin(bottom = 10)
 }
 
-private fun MainActivity.pageLinkCard(link: PageLink): View = baseCard().apply {
+private fun MainActivity.pageLinkCard(link: PageLink, all: List<PageLink>): View = baseCard().apply {
     addView(row {
         if (link.photo.isNotBlank()) addView(initialBadge(link.title, link.photo), LinearLayout.LayoutParams(dp(42), dp(42)).apply { rightMargin = dp(10) })
         val text = LinearLayout(this@pageLinkCard).apply { orientation = LinearLayout.VERTICAL }
@@ -71,12 +71,23 @@ private fun MainActivity.pageLinkCard(link: PageLink): View = baseCard().apply {
         addView(text, LinearLayout.LayoutParams(0, -2, 1f))
         if (link.url.isNotBlank()) addView(label("›", 22f, MUTED))
     })
-    if (link.actions.isNotEmpty()) addView(row {
+    if (link.actions.isNotEmpty() || link.links.isNotEmpty()) addView(row {
         link.actions.forEach { (name, url) ->
             addView(pill(name, TEAL_LIGHT, LINK) { confirmForumAction(name, url) }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
         }
+        link.links.forEach { (name, url) ->
+            addView(pill("› $name", TEAL_LIGHT, LINK) { routePostLink(Uri.parse(url)) }.apply {
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
+        }
     }, margin(top = 10))
-    if (link.url.isNotBlank()) setOnClickListener { routePostLink(Uri.parse(link.url)) }
+    if (link.url.isNotBlank()) setOnClickListener {
+        // Pictures among attachments open in the photo preview, where the others are a swipe away.
+        val pictures = all.filter { it.photo.isNotBlank() && "attachment.php" in it.url }
+        if (link in pictures) openPhotoPreview(pictures.map { it.url }, pictures.indexOf(link))
+        else routePostLink(Uri.parse(link.url))
+    }
 }
 
 private fun MainActivity.confirmForumAction(name: String, url: String) {
@@ -224,3 +235,12 @@ private fun MainActivity.keepSessionCookies(cookies: Map<String, String>) {
     manager.flush()
     repository.updateSessionCookies(manager.getCookie("http://f650gs.pl/"))
 }
+
+private fun MainActivity.openPhotoPreview(urls: List<String>, index: Int) =
+    startActivity(android.content.Intent(this, ImagePreviewActivity::class.java)
+        .putExtra(ImagePreviewActivity.EXTRA_URL, urls[index])
+        .putStringArrayListExtra(ImagePreviewActivity.EXTRA_URLS, ArrayList(urls))
+        .putExtra(ImagePreviewActivity.EXTRA_INDEX, index)
+        .putExtra(ImagePreviewActivity.EXTRA_DARK_MODE, darkMode)
+        .putExtra(ImagePreviewActivity.EXTRA_COOKIES, CookieManager.getInstance().getCookie("http://f650gs.pl/")))
+

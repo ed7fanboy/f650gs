@@ -49,6 +49,11 @@ class ForumWebActivity : Activity() {
             .ipsType_light,.ipsType_small{color:var(--f650-muted)!important}
             .ipsQuote,blockquote.ipsQuote{background:var(--f650-panel)!important;color:var(--f650-quote-text)!important;border-left:4px solid var(--f650-quote-border)!important;border-radius:8px;padding:10px 12px}
             .ipsQuote_citation{color:var(--f650-quote-citation)!important;font-weight:700}
+            .ipsQuote_citation{background:transparent!important;border:0!important}.ipsQuote_citation a{color:var(--f650-quote-citation)!important}
+            .ipsTabs_panels,.ipsTabs_panel,.ipsTabs_contained,.ipsTabs_contained>ul,.ipsTabs_contained .ipsTabs_item,.ipsComment_header,.ipsComment_content{background:var(--f650-surface)!important;color:var(--f650-text)!important;border-color:var(--f650-border)!important}
+            [data-role="commentControls"] a{display:inline-block;padding:6px 12px;margin:2px;border:1px solid var(--f650-border);border-radius:16px;text-decoration:none!important}
+            .ipsPager a,.ipsPager_title{color:var(--f650-link)!important}.ipsPager_type{color:var(--f650-muted)!important}
+            .ipsType_sectionTitle,.ipsType_sectionTitle .ipsButtonRow,.ipsType_sectionTitle .ipsButtonRow a{background:var(--f650-panel)!important;color:var(--f650-text)!important;border-color:var(--f650-border)!important}
             .ipsComment_header,.cAuthorPane,.cAuthorPane_info{background:var(--f650-panel)!important;color:var(--f650-text)!important}
             .ipsComment_author,.ipsComment_author a,.cAuthorPane_author,.cAuthorPane_author a,.ipsComment_author a:visited{color:var(--f650-author)!important;font-weight:800!important}
             .ipsComment_content,.ipsComment_content .ipsType_richText,.ipsComment_content p,.ipsComment_content li{color:var(--f650-text)!important}
@@ -408,9 +413,13 @@ class ForumWebActivity : Activity() {
             view.evaluateJavascript(PREPARE_COMPOSER_JS, null)
             if (chatboxFlow) view.evaluateJavascript(PREPARE_CHATBOX_JS, null)
             view.evaluateJavascript(
-                "!!document.querySelector('#elUserNav.cSignedIn') || !!document.querySelector('#elUserNav [data-role=\\\"signOut\\\"]')"
+                // Pages without the forum's header (the admin panel, with its own login) say nothing about
+                // the session; reading them as "signed out" logged members out of the app.
+                "(function(){var nav=document.querySelector('#elUserNav')||document.querySelector('#elSignInLink');if(!nav)return 'unknown';" +
+                    "return (!!document.querySelector('#elUserNav.cSignedIn')||!!document.querySelector('#elUserNav [data-role=\\\"signOut\\\"]'))?'in':'out'})()"
             ) { result ->
-                val signedIn = result == "true"
+                if (result.trim('"') == "unknown") return@evaluateJavascript
+                val signedIn = result.trim('"') == "in"
                 confirmedSignedIn = signedIn
                 if (loginFlow && signedIn && !url.contains("/login/")) {
                     Toast.makeText(this@ForumWebActivity, "Zalogowano do forum", Toast.LENGTH_SHORT).show()

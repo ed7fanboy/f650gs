@@ -88,11 +88,11 @@ internal fun MainActivity.sendTopicReply() {
     val body = postHtml(chatInput.text)
     // Quoting an app footer ("Wysłane z … Tapatalka") is never useful, whatever the display setting.
     val quote = quotedPost?.let { it.copy(html = stripSignatureHtml(it.html, always = true)) }
-    chatInput.isEnabled = false
+    if (!beginSending()) return
     io.execute {
         val result = runCatching { repository.sendReply(form, body, quote) }
         main.post {
-            chatInput.isEnabled = true
+            endSending()
             result.onSuccess {
                 chatInput.setText("")
                 setQuote(null)
@@ -163,11 +163,11 @@ internal fun MainActivity.sendEdit(form: EditForm) {
     if (text.isBlank() || !photosReady(chatInput)) return
     val body = postHtml(chatInput.text)
     val postId = editingPostId
-    chatInput.isEnabled = false
+    if (!beginSending()) return
     io.execute {
         val result = runCatching { repository.sendReply(form.form, body, prefixHtml = editPrefixHtml) }
         main.post {
-            chatInput.isEnabled = true
+            endSending()
             result.onSuccess {
                 setQuote(null)
                 chatInput.setText("")

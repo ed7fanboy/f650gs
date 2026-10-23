@@ -102,6 +102,8 @@ internal fun MainActivity.renderAccount(account: Account) {
         val icon = when {
             "/followed" in url -> R.drawable.ic_visibility
             "/attachments" in url -> R.drawable.ic_attach
+            "/modcp" in url -> R.drawable.ic_gavel
+            "/admin" in url -> R.drawable.ic_admin
             else -> 0
         }
         item(title, icon = icon) { openForumPage(url, title) }
@@ -370,7 +372,10 @@ internal fun MainActivity.renderSettings() {
     content.addView(label("Przeciągnij za ≡, aby zmienić kolejność. Od góry = od lewej. Ostatnie są zawsze widoczne.", 12f, MUTED), margin(top = 2))
 
     section("O aplikacji")
-    content.addView(label("f650gs.pl ${packageManager.getPackageInfo(packageName, 0).versionName}", 13f, MUTED), margin(bottom = 20))
+    content.addView(row {
+        addView(label("f650gs.pl ${packageManager.getPackageInfo(packageName, 0).versionName}", 13f, MUTED), LinearLayout.LayoutParams(0, -2, 1f))
+        addView(pill("Sprawdź aktualizacje", TEAL_LIGHT, LINK) { checkForUpdate(manual = true) })
+    }, margin(bottom = 20))
 }
 
 /**
@@ -449,6 +454,30 @@ private fun MainActivity.renderForumSettings() {
     }
     link("Ignorowani użytkownicy", "Czyich wpisów i wiadomości nie pokazywać") {
         openForumPage("http://f650gs.pl/ignore/", "Ignorowani użytkownicy")
+    }
+}
+
+/**
+ * The app may think it is signed out while the forum session is still good (e.g. an older version
+ * took the admin panel's separate login page for a sign-out). If a session cookie is there, ask the
+ * forum once and take the account back without asking for the password.
+ */
+internal fun MainActivity.restoreSessionIfValid() {
+    if (signedIn) return
+    val cookies = CookieManager.getInstance().getCookie("http://f650gs.pl/").orEmpty()
+    if (!Regex("""member_id=[1-9]""").containsMatchIn(cookies)) return
+    repository.updateSessionCookies(cookies)
+    io.execute {
+        val account = runCatching { repository.account() }.getOrNull() ?: return@execute
+        main.post {
+            if (signedIn) return@post
+            signedIn = true
+            getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().putBoolean(SIGNED_IN_KEY, true).apply()
+            rememberAccount(account)
+            refreshCounters(force = true)
+            updateChrome()
+            renderCurrent()
+        }
     }
 }
 

@@ -17,6 +17,7 @@ A lightweight native reader for [http://f650gs.pl/](http://f650gs.pl/). The app 
 - Other forum pages (account settings, e-mail/password/username change, ignored members, password reset, …) are drawn natively from their notes, lists and IPS forms by `FormPages.kt` (`ForumParser.nativePage`); pages with the post editor, uploads or unknown fields fall back to the WebView.
 - Native sign-up: the forum's registration form rendered field by field (labels, anti-bot question, terms box), errors from the forum shown next to the fields.
 - Post photos fill the post's width (tall ones capped at 3/4 of the screen). The photo preview swipes between the post's photos ("Zdjęcie 2 z 4") and its download button saves the original to Pictures/f650gs.pl (DownloadManager).
+- Update check (`Updates.kt`): once a day reads `https://ed7fanboy.github.io/f650gs/version.json` (written by `tools/update_site.sh`); a newer version offers "Instaluj / Anuluj", downloads the APK, verifies its SHA-256 and installs it through `PackageInstaller` (needs `REQUEST_INSTALL_PACKAGES`).
 - Emoji typed on Android become forum emoticons in posts and ASCII codes in titles and the Chatbox (`Emoji.kt`); the forum stores 3-byte UTF-8 only.
 - "Edytuj" on own posts while the forum allows editing, in the reply box: quotes stay before the text and photos/attachments after it, unchanged; only the author's own text is edited.
 - Search results grouped one card per topic.

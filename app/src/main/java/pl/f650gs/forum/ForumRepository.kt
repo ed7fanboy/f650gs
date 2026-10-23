@@ -134,7 +134,7 @@ class ForumRepository {
         cookies.putAll(response.cookies())
         val member = cookies.entries.firstOrNull { it.key.endsWith("member_id") }?.value?.toLongOrNull() ?: 0
         if (member <= 0) {
-            val message = runCatching { response.parse().selectFirst(".ipsMessage_error, .ipsType_warning")?.text().clean() }.getOrNull()
+            val message = runCatching { ForumParser.pageErrors(response.parse(), ".ipsMessage_error, .ipsType_warning") }.getOrNull()
             error(message?.ifBlank { null } ?: "Nieprawidłowa nazwa użytkownika lub hasło.")
         }
         sessionCookies = cookies
@@ -153,7 +153,7 @@ class ForumRepository {
             .data(form.hidden)
             .apply { on.forEach { data(it.name, it.value) } }
             .execute()
-        val problem = response.parse().select(".ipsMessage_error, .ipsFieldRow_error .ipsType_warning").text().clean()
+        val problem = ForumParser.pageErrors(response.parse())
         if (problem.isNotBlank()) error(problem)
     }
 
@@ -252,7 +252,8 @@ class ForumRepository {
             .data(form.fields)
             .data(form.editor, html)
             .execute()
-        val problem = response.parse().selectFirst(".ipsMessage_error")?.text().clean()
+        // Administrators' header notices are not errors; taking them for a failed reply made the same post go out twice.
+        val problem = ForumParser.pageErrors(response.parse())
         if (problem.isNotBlank()) error(problem)
     }
 
@@ -317,6 +318,9 @@ class ForumRepository {
         .apply { if (sessionCookies.isNotEmpty()) cookies(sessionCookies) }
 
     private fun page(pathOrUrl: String) = connect(pathOrUrl).get()
+
+
+
 
 
 

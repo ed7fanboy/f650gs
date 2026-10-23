@@ -293,7 +293,7 @@ object ForumParser {
 
     fun composeForm(document: Document): ComposeForm {
         val form = replyForm(document) ?: error(
-            document.selectFirst(".ipsMessage_error, .ipsType_warning")?.text().clean().ifBlank { "Nie możesz napisać do tej osoby." }
+            pageErrors(document, ".ipsMessage_error, .ipsType_warning").ifBlank { "Nie możesz napisać do tej osoby." }
         )
         val recipient = document.selectFirst("textarea[name=messenger_to]")?.wholeText()?.trim().orEmpty()
         if (recipient.isBlank()) error("Nie możesz napisać do tej osoby.")
@@ -302,15 +302,22 @@ object ForumParser {
 
     fun newTopicForm(document: Document): NewTopicForm {
         val form = replyForm(document) ?: error(
-            document.selectFirst(".ipsMessage_error, .ipsType_warning")?.text().clean().ifBlank { "Nie możesz założyć tematu w tym dziale." }
+            pageErrors(document, ".ipsMessage_error, .ipsType_warning").ifBlank { "Nie możesz założyć tematu w tym dziale." }
         )
         val titleField = form.fields.keys.firstOrNull { it.endsWith("_title") } ?: error("Forum nie udostępnia pola tytułu.")
         return NewTopicForm(form, titleField)
     }
 
     /** The forum's complaint about a submitted form, or [fallback] when the page shows none. */
-    fun formError(document: Document, fallback: String): String =
-        document.select(".ipsMessage_error, .ipsFieldRow_error .ipsType_warning").text().clean().ifBlank { fallback }
+    /**
+     * The page's own error text for [selector]. Error boxes in the page header are left out: the forum
+     * shows administrators notices there on every page (e.g. "a new IPS Community Suite version is
+     * available"), which are not about what was just sent.
+     */
+    fun pageErrors(document: Document, selector: String = ".ipsMessage_error, .ipsFieldRow_error .ipsType_warning"): String =
+        document.select(selector).filterNot { el -> el.parents().any { it.id() == "ipsLayout_header" } }.joinToString(" ") { it.text() }.clean()
+
+    fun formError(document: Document, fallback: String): String = pageErrors(document).ifBlank { fallback }
 
     /** The edit form for a post, or null when this account may not edit it. */
     fun editForm(document: Document): EditForm? {
@@ -451,7 +458,7 @@ object ForumParser {
             action = safeForumUrl(form.absUrl("action")),
             hidden = hidden,
             fields = fields,
-            error = document.select(".ipsMessage_error").text().clean(),
+            error = pageErrors(document, ".ipsMessage_error"),
         )
     }
 
@@ -504,13 +511,17 @@ object ForumParser {
         fun skip(element: Element) = element.parents().any { parent ->
             parent in taken || parent.hasClass("ipsMenu") || parent.hasClass("ipsHide") || parent.hasClass("ipsSideMenu")
         }
-        for (element in main.select("h2, .ipsType_textBlock, .ipsMessage, ul.ipsDataList, ol.ipsDataList, form")) {
+        for (element in main.select("h2, .ipsType_textBlock, .ipsMessage, ul.ipsDataList, ol.ipsDataList, form, div.ipsType_center.ipsPad")) {
             if (skip(element)) continue
             when {
                 element.normalName() == "form" -> {
                     if (element.attr("data-role") == "pageJump") continue
+                    // Bulk tools for ticked rows (e.g. followed content): the list inside it is drawn, the tools are not.
+                    if (element.attr("data-role") == "moderationTools") continue
                     blocks += PageBlock.Form(forumForm(element) ?: return null)
                 }
+                // A list's "nothing here yet" note.
+                element.hasClass("ipsType_center") -> element.text().clean().takeIf { it.isNotBlank() }?.let { blocks += PageBlock.Text(it) }
                 element.normalName() == "h2" -> blocks += PageBlock.Heading(element.text().clean())
                 element.hasClass("ipsMessage") -> if (!element.hasClass("ipsMessage_error")) blocks += PageBlock.Text(element.text().clean())
                 element.hasClass("ipsType_textBlock") -> blocks += PageBlock.Text(
@@ -520,7 +531,15 @@ object ForumParser {
             }
             taken.add(element)
         }
-        if (blocks.none { it is PageBlock.Form || it is PageBlock.Links }) return null
+        // Further pages of the page's list.
+        main.selectFirst("ul.ipsPagination")?.let { pager ->
+            listOfNotNull(
+                pager.selectFirst(".ipsPagination_prev:not(.ipsPagination_inactive) a[href]")?.let { PageLink("‹ Poprzednia strona", safeForumUrl(it.absUrl("href"))) },
+                pager.selectFirst(".ipsPagination_next:not(.ipsPagination_inactive) a[href]")?.let { PageLink("Następna strona ›", safeForumUrl(it.absUrl("href"))) },
+            ).takeIf { it.isNotEmpty() }?.let { blocks += PageBlock.Links(it) }
+        }
+        val hasSideMenu = main.selectFirst(".ipsSideMenu_list a[href]") != null
+        if (blocks.none { it is PageBlock.Form || it is PageBlock.Links } && !hasSideMenu) return null
         // The side menu, without the page itself and rows the page already lists.
         val shown = blocks.filterIsInstance<PageBlock.Links>().flatMap { it.items }.map { it.url.trimEnd('/') }.toSet() +
             url.substringBefore('#').trimEnd('/')
@@ -542,7 +561,7 @@ object ForumParser {
 
     /** Rows of an IPS data list as links: title, the rest of the text, the member photo and actions. */
     private fun dataListBlock(list: Element): PageBlock? {
-        val links = list.select("> li.ipsDataItem").mapNotNull { item ->
+        val links = list.select("> li.ipsDataItem, > div.ipsDataItem").mapNotNull { item ->
             val main = item.selectFirst(".ipsDataItem_main") ?: item
             val titleElement = main.selectFirst(".ipsDataItem_title")
             val title = titleElement?.text().clean()
@@ -557,8 +576,12 @@ object ForumParser {
                 title = title,
                 url = target?.absUrl("href")?.let(::safeForumUrl).orEmpty(),
                 detail = detail,
-                photo = photoUrl(item.selectFirst(".ipsUserPhoto img")),
+                // A member's photo, or a thumbnail (attachments).
+                photo = photoUrl(item.selectFirst(".ipsUserPhoto img, img.ipsThumb_small, img.ipsThumb")),
                 actions = actions,
+                // Where the row is used, outside its main part (an attachment's post).
+                links = item.select("a[href*=/topic/]").filter { a -> a.parents().none { it === main } }.map { it.text().clean() to safeForumUrl(it.absUrl("href")) }
+                    .filter { it.first.isNotBlank() }.distinct(),
             )
         }
         if (links.isNotEmpty()) return PageBlock.Links(links)

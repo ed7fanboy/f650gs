@@ -68,6 +68,14 @@
 - Saved test pages anonymised (names, titles, texts, ids, files), also in the published history.
 - 0.17.1: photos ask Google for one permission only, `photoslibrary.appendonly` (add new photos, create the app's album); the unused read permission is gone.
 
+## 0.18 (2026-10-23)
+
+- Update check: once a day the app reads `version.json` on the landing page; a newer version brings up "Instaluj / Anuluj", the APK is downloaded, checked against its SHA-256 and handed to Android's installer (settings: "Sprawdź aktualizacje").
+- Moje załączniki and Obserwowana zawartość are native: thumbnails, the post each attachment is in, further pages; attachments open in the photo preview.
+- Switches have clearer on/off contrast in both themes; locked ones look faded.
+- 0.18.1: no more double posts. Administrators' header notice ("a new IPS Community Suite version is available") was read as a failed send, and a second tap on Wyślij while sending posted again; both are fixed (header notices are ignored everywhere, the send box takes one tap at a time).
+- 0.18.2: icons for the moderator and admin panels; report pages in moderation follow the dark theme; opening the admin panel no longer signs the app out, and a still-valid session is restored on start.
+
 ## Known limitations
 
 - The forum is served over HTTP, so traffic, including login and the session, is not encrypted.

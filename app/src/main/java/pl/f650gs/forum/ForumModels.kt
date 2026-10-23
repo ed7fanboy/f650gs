@@ -252,6 +252,8 @@ data class PageLink(
     val detail: String = "",
     val photo: String = "",
     val actions: List<Pair<String, String>> = emptyList(),
+    /** Other places the row points to (label to address), e.g. the post an attachment is in. */
+    val links: List<Pair<String, String>> = emptyList(),
 )
 
 sealed class PageBlock {

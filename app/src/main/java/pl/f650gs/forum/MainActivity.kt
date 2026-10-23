@@ -130,6 +130,9 @@ class MainActivity : Activity() {
     internal var editingPostId = 0L
     // Photo button of the reply box (topics and private messages), and the text box a picked photo goes into.
     internal lateinit var photoButton: TextView
+    internal lateinit var sendButton: TextView
+    /** A post, message or Chatbox line is on its way; further taps on Wyślij are ignored. */
+    internal var sending = false
     internal var photoTarget: EditText? = null
     internal var pickedPhotos: List<android.net.Uri> = emptyList()
     internal var awaitingShareLink = false
@@ -162,6 +165,7 @@ class MainActivity : Activity() {
         signedIn = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(SIGNED_IN_KEY, false)
         hideSignatures = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(HIDE_SIGNATURES_KEY, true)
         restoreNavigationState(savedInstanceState)
+        restoreSessionIfValid()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -287,6 +291,7 @@ class MainActivity : Activity() {
 
     /** Tab requests from system notifications ("notifications" opens the forum's notification list). */
     internal fun handleTabIntent(intent: Intent?) {
+        if (intent?.action == ACTION_INSTALL_STATUS) return handleInstallStatus(intent)
         val request = intent?.getStringExtra(EXTRA_SELECT_TAB) ?: return
         if (request == "notifications") {
             navigate(Screen.Notifications)
@@ -765,6 +770,7 @@ class MainActivity : Activity() {
         resumed = true
         if (currentScreen == Screen.Chatbox && chatCsrf.isNotBlank()) chatPoll.run()
         refreshCounters()
+        checkForUpdate()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -104,12 +104,33 @@ internal fun MainActivity.composerRow(): LinearLayout = LinearLayout(this).apply
         }
     }
     addView(chatInput, LinearLayout.LayoutParams(0, -2, 1f))
-    addView(label("➤", 20f, WHITE, bold = true).apply {
+    sendButton = label("➤", 20f, WHITE, bold = true).apply {
         gravity = Gravity.CENTER
         contentDescription = "Wyślij"
         background = rounded(if (darkMode) Color.rgb(47, 90, 120) else Color.rgb(0, 102, 177), 22)
         setOnClickListener { sendChat() }
-    }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(8) })
+    }
+    addView(sendButton, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(8) })
+}
+
+/**
+ * Starts sending from the bottom box, or says no when something is already on its way: quick
+ * repeated taps on Wyślij (or the keyboard's send key) used to post the same text twice.
+ */
+internal fun MainActivity.beginSending(): Boolean {
+    if (sending) return false
+    sending = true
+    chatInput.isEnabled = false
+    sendButton.isEnabled = false
+    sendButton.alpha = 0.4f
+    return true
+}
+
+internal fun MainActivity.endSending() {
+    sending = false
+    chatInput.isEnabled = true
+    sendButton.isEnabled = true
+    sendButton.alpha = 1f
 }
 
 internal fun MainActivity.loadChat() {
@@ -189,7 +210,7 @@ internal fun MainActivity.sendChat() {
     if (currentScreen is Screen.Topic) return sendTopicReply()
     val text = chatInput.text.toString().trim()
     if (text.isBlank() || chatCsrf.isBlank()) return
-    chatInput.isEnabled = false
+    if (!beginSending()) return
     val csrf = chatCsrf
     val since = chatLastId
     io.execute {
@@ -198,7 +219,7 @@ internal fun MainActivity.sendChat() {
             repository.chatMessages(since, csrf)
         }
         main.post {
-            chatInput.isEnabled = true
+            endSending()
             result.onSuccess { batch ->
                 chatInput.setText("")
                 appendChat(batch)
@@ -347,14 +368,14 @@ internal fun MainActivity.sendPrivateMessage() {
     val text = chatInput.text.toString().trim()
     if (text.isBlank() || !photosReady(chatInput)) return
     val body = postHtml(chatInput.text)
-    chatInput.isEnabled = false
+    if (!beginSending()) return
     io.execute {
         val result = runCatching {
             repository.sendReply(page.replyForm ?: error("Forum nie udostępnia formularza odpowiedzi."), body)
             repository.conversation(page.url)
         }
         main.post {
-            chatInput.isEnabled = true
+            endSending()
             result.onSuccess { updated ->
                 chatInput.setText("")
                 if (currentScreen is Screen.Conversation) renderConversation(updated)

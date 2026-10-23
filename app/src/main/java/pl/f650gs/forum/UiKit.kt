@@ -243,10 +243,20 @@ internal fun MainActivity.hideKeyboard(view: View) {
     (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.hideSoftInputFromWindow(view.windowToken, 0)
 }
 
+/** On: white thumb on a strong blue track. Off: grey thumb on a track that stands out from the card. Locked: faded. */
 internal fun MainActivity.styleSwitch(switch: android.widget.Switch) {
-    val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
-    switch.thumbTintList = android.content.res.ColorStateList(states, intArrayOf(LINK, MUTED))
-    switch.trackTintList = android.content.res.ColorStateList(states, intArrayOf(ACCENT_FILL, TEAL_LIGHT))
+    val states = arrayOf(
+        intArrayOf(-android.R.attr.state_enabled, android.R.attr.state_checked),
+        intArrayOf(-android.R.attr.state_enabled),
+        intArrayOf(android.R.attr.state_checked),
+        intArrayOf(),
+    )
+    fun faded(color: Int) = Color.argb(110, Color.red(color), Color.green(color), Color.blue(color))
+    val onTrack = if (darkMode) Color.rgb(79, 148, 205) else Color.rgb(0, 102, 177)
+    val offThumb = if (darkMode) Color.rgb(160, 175, 178) else Color.rgb(118, 132, 138)
+    val offTrack = if (darkMode) Color.rgb(98, 116, 120) else Color.rgb(196, 206, 212)
+    switch.thumbTintList = android.content.res.ColorStateList(states, intArrayOf(faded(Color.WHITE), faded(offThumb), Color.WHITE, offThumb))
+    switch.trackTintList = android.content.res.ColorStateList(states, intArrayOf(faded(onTrack), faded(offTrack), onTrack, offTrack))
 }
 
 /** Plain-text previews: app footers (when enabled) and Tapatalk emoji placeholders like "[emoji41]". */

@@ -353,4 +353,39 @@ class ForumParserTest {
         assertTrue(confirm.fields.containsKey("csrfKey"))
         assertNull(ForumParser.confirmForm(page("ignore.html", "http://f650gs.pl/ignore/")))
     }
+
+    @Test fun attachmentsListShowsThumbnailsPostsAndPages() {
+        val page = nativePage("attachments.html", "http://f650gs.pl/attachments/")!!
+        val rows = page.blocks.filterIsInstance<PageBlock.Links>().flatMap { it.items }
+        val picture = rows.first { it.title == "zdjecie-1.jpg" }
+        assertEquals("http://f650gs.pl/uploads/file-1.jpg", picture.photo)
+        assertTrue(picture.url, picture.url.contains("attachment.php?id=901"))
+        assertTrue(picture.detail, picture.detail.startsWith("39 kB"))
+        assertEquals(listOf("Temat 1"), picture.links.map { it.first })
+        assertEquals("", rows.first { it.title == "instrukcja.pdf" }.photo)
+        assertTrue(rows.any { it.title == "Następna strona ›" && it.url.endsWith("page=2") })
+        assertTrue(rows.none { it.title.startsWith("‹") })
+    }
+
+    @Test fun emptyFollowedContentIsDrawnWithItsTypes() {
+        val page = nativePage("followed.html", "http://f650gs.pl/followed/")
+        assertNotNull(page)
+        page!!
+        assertTrue(page.blocks.none { it is PageBlock.Form })
+        assertTrue(page.blocks.any { it is PageBlock.Text && it.text == "Nic tu jeszcze nie ma" })
+        val types = page.blocks.filterIsInstance<PageBlock.Links>().flatMap { it.items }.map { it.title }
+        assertTrue(types.toString(), types.containsAll(listOf("Tematy", "Forum", "Użytkownicy")))
+    }
+
+    @Test fun adminHeaderNoticeIsNotAnError() {
+        val page = Jsoup.parse(
+            "<body><div id=\"ipsLayout_header\"><div class=\"ipsMessage ipsMessage_error\">Jest dostępna nowa wersja IPS Community Suite: 4.7.25</div></div>" +
+                "<div id=\"ipsLayout_mainArea\"><form><div class=\"ipsMessage ipsMessage_error\">Wpis jest za krótki.</div></form></div></body>",
+            "http://f650gs.pl/",
+        )
+        assertEquals("Wpis jest za krótki.", ForumParser.pageErrors(page))
+        assertEquals("", ForumParser.pageErrors(Jsoup.parse(page.html().replace("Wpis jest za krótki.", "").replace("ipsMessage ipsMessage_error\">", "x\">").let {
+            "<body><div id=\"ipsLayout_header\"><div class=\"ipsMessage ipsMessage_error\">Jest dostępna nowa wersja IPS Community Suite</div></div></body>"
+        })))
+    }
 }
