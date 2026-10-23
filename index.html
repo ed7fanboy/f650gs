@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pl" data-title-pl="f650gs.pl na Androida" data-title-en="f650gs.pl for Android">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>f650gs.pl na Androida</title>
+<meta name="description" content="Natywna aplikacja na Androida dla forum f650gs.pl: szybsze czytanie, zdjęcia w pełnej rozdzielczości, Chatbox, powiadomienia.">
+<link rel="icon" href="img/icon.png">
+<script>
+/* Language: the browser's, switchable with the flag button (kept in this browser).
+   Text comes in pairs: <span lang="pl">…</span><span lang="en">…</span>. */
+(function () {
+  var KEY = "f650gs-site-lang", base = /^pl/i.test(navigator.language || "") ? "pl" : "en", saved = null, lang;
+  try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  lang = saved && saved.base === base ? saved.lang : base;
+  function apply() {
+    var r = document.documentElement;
+    r.setAttribute("data-lang", lang); r.lang = lang;
+    document.title = r.getAttribute("data-title-" + lang);
+  }
+  apply();
+  window.toggleLang = function () {
+    lang = lang === "pl" ? "en" : "pl"; apply();
+    try { localStorage.setItem(KEY, JSON.stringify({ lang: lang, base: base })); } catch (e) {}
+  };
+})();
+</script>
+<style>
+:root {
+  --bg: #f1f5f8; --card: #ffffff; --ink: #1b2b30; --muted: #586c71; --line: #dbe4e8;
+  --accent: #0066b1; --accent-ink: #ffffff; --soft: #e1effa; --good: #2e7d32; --bad: #c62828; --phone: #11191c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11191c; --card: #1d292d; --ink: #e8efed; --muted: #b9c8c9; --line: #36484b;
+    --accent: #6fb0e0; --accent-ink: #0d1a22; --soft: #26383b; --good: #81c784; --bad: #ff8a80; --phone: #000000;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11191c; --card: #1d292d; --ink: #e8efed; --muted: #b9c8c9; --line: #36484b;
+  --accent: #6fb0e0; --accent-ink: #0d1a22; --soft: #26383b; --good: #81c784; --bad: #ff8a80; --phone: #000000;
+}
+:root[data-lang="pl"] body [lang="en"], :root[data-lang="en"] body [lang="pl"] { display: none !important; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+header.hero { padding: 28px 0 40px; border-bottom: 1px solid var(--line); }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand img { width: 64px; height: 64px; }
+.brand h1 { margin: 0; font-size: 26px; line-height: 1.15; }
+.brand p { margin: 2px 0 0; color: var(--muted); font-size: 15px; }
+.langbtn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 18px; padding: 6px 12px; font: 600 14px system-ui, sans-serif; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.flag { width: 20px; height: 13px; border-radius: 2px; }
+.download { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px; }
+.btn { display: inline-flex; align-items: center; gap: 10px; background: var(--accent); color: var(--accent-ink); text-decoration: none; font-weight: 800; font-size: 19px; padding: 15px 26px; border-radius: 30px; }
+.btn svg { width: 22px; height: 22px; fill: currentColor; }
+.meta { color: var(--muted); font-size: 14px; }
+.lead { font-size: 20px; max-width: 760px; margin: 26px 0 0; }
+h2 { font-size: 28px; margin: 56px 0 8px; }
+h2.first { margin-top: 36px; }
+.sub { color: var(--muted); margin: 0 0 8px; }
+.feature { display: grid; grid-template-columns: 1fr 300px; gap: 40px; align-items: center; padding: 34px 0; border-bottom: 1px solid var(--line); }
+.feature.flip { grid-template-columns: 300px 1fr; }
+.feature.flip .shots { order: -1; }
+.feature h3 { font-size: 23px; margin: 0 0 10px; }
+.feature p { margin: 0 0 10px; }
+.feature ul { margin: 6px 0 0; padding-left: 20px; }
+.shots { display: flex; gap: 14px; justify-content: center; }
+.shots.two { gap: 10px; }
+.phone { width: 100%; height: auto; max-width: 300px; border-radius: 30px; border: 7px solid var(--phone); box-shadow: 0 18px 40px rgba(0, 0, 0, .25); display: block; background: var(--phone); }
+.shots.two .phone { max-width: 210px; border-width: 6px; border-radius: 24px; }
+.feature.wide { grid-template-columns: 1fr 440px; }
+.feature.wide.flip { grid-template-columns: 440px 1fr; }
+.tag { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 18px; }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+.box h3 { margin: 0 0 8px; font-size: 19px; }
+.box.good h3 { color: var(--good); }
+.box.bad h3 { color: var(--bad); }
+.box ul { margin: 0; padding-left: 20px; }
+.box li { margin: 6px 0; }
+ol.steps { padding-left: 22px; }
+ol.steps li { margin: 8px 0; }
+code { background: var(--soft); padding: 1px 6px; border-radius: 6px; font-size: 14px; word-break: break-all; }
+footer { padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) {
+  .feature, .feature.flip, .feature.wide, .feature.wide.flip { grid-template-columns: 1fr; gap: 22px; }
+  .feature.flip .shots { order: 0; }
+  .cols { grid-template-columns: 1fr; }
+  .brand h1 { font-size: 22px; }
+  .lead { font-size: 18px; }
+  h2 { font-size: 24px; }
+}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <img src="img/icon.png" alt="">
+        <div>
+          <h1><span lang="pl">f650gs.pl na Androida</span><span lang="en">f650gs.pl for Android</span></h1>
+          <p><span lang="pl">Natywna aplikacja dla forum f650gs.pl</span><span lang="en">A native app for the f650gs.pl forum</span></p>
+        </div>
+      </div>
+      <button class="langbtn" type="button" onclick="toggleLang()">
+        <span lang="en" title="Przełącz na polski"><svg class="flag" viewBox="0 0 16 10" aria-hidden="true"><rect width="16" height="5" fill="#fff"/><rect y="5" width="16" height="5" fill="#dc143c"/></svg>PL</span>
+        <span lang="pl" title="Switch to English"><svg class="flag" viewBox="0 0 60 30" aria-hidden="true"><clipPath id="uk-t"><path d="M30,15h30v15zv15h-30zh-30v-15zv-15h30z"/></clipPath><path d="M0,0v30h60v-30z" fill="#012169"/><path d="M0,0L60,30M60,0L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0L60,30M60,0L0,30" clip-path="url(#uk-t)" stroke="#C8102E" stroke-width="4"/><path d="M30,0v30M0,15h60" stroke="#fff" stroke-width="10"/><path d="M30,0v30M0,15h60" stroke="#C8102E" stroke-width="6"/></svg>EN</span>
+      </button>
+    </div>
+    <div class="download">
+      <a class="btn" href="f650gs.apk" download>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/></svg>
+        <span lang="pl">Pobierz APK</span><span lang="en">Download APK</span>
+      </a>
+      <div class="meta">
+        <span lang="pl">Wersja</span><span lang="en">Version</span> 0.17.0 · 3,5 MB · Android 7.0+<br>
+        SHA-256: <code id="sha">f709f0453af26397520841a2d70c573bbacfc3a43c6090237276101abba7ccd0</code>
+      </div>
+    </div>
+    <p class="lead">
+      <span lang="pl">Czytasz, piszesz i wrzucasz zdjęcia na forum tak, jak w nowoczesnej aplikacji, a nie na stronie z 2010 roku. Działa na Twoim zwykłym koncie forum, bez Tapatalka, bez reklam i bez śledzenia.</span>
+      <span lang="en">Read, post and share photos on the forum like in a modern app, not a 2010 web page. It runs on your normal forum account, without Tapatalk, ads or tracking.</span>
+    </p>
+  </div>
+</header>
+
+<main class="wrap">
+  <h2 class="first"><span lang="pl">Instalacja</span><span lang="en">Installing</span></h2>
+  <ol class="steps">
+    <li><span lang="pl">Na telefonie dotknij <a href="f650gs.apk" download>Pobierz APK</a>.</span><span lang="en">On the phone, tap <a href="f650gs.apk" download>Download APK</a>.</span></li>
+    <li><span lang="pl">Otwórz pobrany plik. Android zapyta o zgodę na instalację z przeglądarki: zezwól (tylko raz).</span><span lang="en">Open the downloaded file. Android asks to allow installs from the browser: allow it (once).</span></li>
+    <li><span lang="pl">Uruchom „f650gs.pl” i zaloguj się swoim kontem forum. Nowszą wersję instalujesz tak samo, ustawienia i logowanie zostają.</span><span lang="en">Open "f650gs.pl" and sign in with your forum account. A newer version installs the same way and keeps your settings and login.</span></li>
+  </ol>
+  <h2><span lang="pl">Czym aplikacja jest lepsza od forum w przeglądarce</span><span lang="en">What the app does better than the forum in a browser</span></h2>
+  <p class="sub"><span lang="pl">Teksty i zdjęcia innych użytkowników na zrzutach są rozmyte; ekran tematu pokazuje przykładowy wpis.</span><span lang="en">Other members' text and photos are blurred in the screenshots; the topic screen shows a sample post.</span></p>
+
+  <section class="feature">
+    <div>
+      <div class="tag"><span lang="pl">Ostatnie</span><span lang="en">Recent</span></div>
+      <h3><span lang="pl">Jedna karta na temat, od razu przy pierwszym nieprzeczytanym</span><span lang="en">One card per topic, opening at the first unread post</span></h3>
+      <p><span lang="pl">Zamiast listy, w której ten sam wątek pojawia się pięć razy, każdy temat to jedna karta z liczbą nowych wpisów i ich autorami. Dotknięcie otwiera temat w miejscu, gdzie skończyłeś czytać.</span>
+      <span lang="en">Instead of a list where one thread shows up five times, each topic is one card with the number of new posts and their authors. Tapping it opens the topic where you stopped reading.</span></p>
+      <p><span lang="pl">Listy pokazują się od razu z ostatniej kopii, a świeże wpisy doczytują się w tle.</span><span lang="en">Lists appear at once from the last copy while fresh posts load in the background.</span></p>
+    </div>
+    <div class="shots"><img class="phone" src="img/ostatnie.webp" alt="" loading="lazy" width="720" height="1560"></div>
+  </section>
+
+  <section class="feature wide flip">
+    <div>
+      <div class="tag"><span lang="pl">Zdjęcia</span><span lang="en">Photos</span></div>
+      <h3><span lang="pl">Zdjęcia na całą szerokość, a w podglądzie przewijasz jak w galerii</span><span lang="en">Full-width photos, browsed like a gallery</span></h3>
+      <p><span lang="pl">Zdjęcia we wpisach wypełniają ekran. Dotknięcie otwiera podgląd z przybliżaniem; przesunięcie palcem w bok pokazuje następne albo poprzednie zdjęcie z tego wpisu („Zdjęcie 2 z 4”), a przycisk pobierania zapisuje oryginał w galerii telefonu.</span>
+      <span lang="en">Photos in posts fill the screen. Tap one for a zoomable preview; swipe sideways for the next or previous photo of that post ("Zdjęcie 2 z 4"), and the download button saves the original to the phone's gallery.</span></p>
+      <p><span lang="pl">Wrzucanie: zaznaczasz do 10 zdjęć w galerii i aplikacja sama je wysyła w pełnej rozdzielczości, w miejsce kursora w tekście. W przeglądarce każde trzeba osobno wrzucić na zewnętrzny serwer i wkleić link.</span>
+      <span lang="en">Posting: pick up to 10 photos in the gallery and the app uploads them at full resolution, right where the cursor is. In a browser each one has to go to an outside host and its link pasted by hand.</span></p>
+    </div>
+    <div class="shots two"><img class="phone" src="img/temat.webp" alt="" loading="lazy" width="720" height="1560"><img class="phone" src="img/galeria.webp" alt="" loading="lazy" width="720" height="1560"></div>
+  </section>
+
+  <section class="feature">
+    <div>
+      <div class="tag"><span lang="pl">Powiadomienia</span><span lang="en">Notifications</span></div>
+      <h3><span lang="pl">Dzwonek na górze i powiadomienia na telefonie</span><span lang="en">A bell up top and notifications on the phone</span></h3>
+      <p><span lang="pl">Cytaty, wzmianki i reakcje na Twoje wpisy w jednym miejscu, z czerwonym licznikiem. Aplikacja sama sprawdza forum w tle i daje znać o nowych wiadomościach i powiadomieniach, także gdy jest zamknięta.</span>
+      <span lang="en">Quotes, mentions and reactions to your posts in one place, with a red counter. The app checks the forum in the background and tells you about new messages and notifications, even when it is closed.</span></p>
+    </div>
+    <div class="shots"><img class="phone" src="img/powiadomienia.webp" alt="" loading="lazy" width="720" height="1560"></div>
+  </section>
+
+  <section class="feature flip">
+    <div>
+      <div class="tag">Chatbox</div>
+      <h3><span lang="pl">Chatbox jak w komunikatorze</span><span lang="en">The Chatbox like a messenger</span></h3>
+      <p><span lang="pl">Dymki, emotki, starsze wiadomości po przewinięciu i pole do pisania przypięte na dole. Odświeża się sam. Tapatalk Chatboksa w ogóle nie obsługuje.</span>
+      <span lang="en">Bubbles, emoticons, older messages on scroll and the input pinned at the bottom. It refreshes by itself. Tapatalk does not support the Chatbox at all.</span></p>
+    </div>
+    <div class="shots"><img class="phone" src="img/chatbox.webp" alt="" loading="lazy" width="720" height="1560"></div>
+  </section>
+
+  <section class="feature wide">
+    <div>
+      <div class="tag"><span lang="pl">Konto i ustawienia forum</span><span lang="en">Account and forum settings</span></div>
+      <h3><span lang="pl">Wszystko w aplikacji, także ustawienia konta</span><span lang="en">Everything in the app, account settings too</span></h3>
+      <p><span lang="pl">Ustawienia powiadomień, zmiana hasła i e-maila, ignorowani użytkownicy czy rejestracja to normalne ekrany Androida z przełącznikami, a nie pomniejszona strona forum. Przy wpisywaniu nazwy aplikacja podpowiada użytkowników, więc literówka nie jest problemem.</span>
+      <span lang="en">Notification settings, password and e-mail changes, ignored members and sign-up are normal Android screens with switches, not a shrunken forum page. When you type a name, the app suggests members, so a typo is no problem.</span></p>
+    </div>
+    <div class="shots two"><img class="phone" src="img/ustawienia_powiadomien.webp" alt="" loading="lazy" width="720" height="1560"><img class="phone" src="img/ignorowani.webp" alt="" loading="lazy" width="720" height="1560"></div>
+  </section>
+
+  <section class="feature wide flip">
+    <div>
+      <div class="tag"><span lang="pl">Czytanie</span><span lang="en">Reading</span></div>
+      <h3><span lang="pl">Emotki, bez śmieci we wpisach, ciemny motyw, Twój układ</span><span lang="en">Emoticons, no clutter in posts, a dark theme, your layout</span></h3>
+      <ul>
+        <li><span lang="pl">Emotki forum widać jako obrazki, a nie kody z dwukropkami w nawiasach kwadratowych, jak w Tapatalku.</span><span lang="en">Forum emoticons show as pictures, not as colon codes in square brackets like in Tapatalk.</span></li>
+        <li><span lang="pl">Emoji z klawiatury Androida po prostu działają: aplikacja zamienia je na emotki forum. W przeglądarce wpis z emoji się nie wysyłał.</span><span lang="en">Emoji from the Android keyboard just work: the app turns them into forum emoticons. In the browser a post with emoji did not go through.</span></li>
+        <li><span lang="pl">„Ukrywaj stopki” usuwa dopiski typu „Wysłane z mojego … przy użyciu Tapatalka”, także z cytatów.</span><span lang="en">"Ukrywaj stopki" removes notes like "Sent from my … using Tapatalk", in quotes too.</span></li>
+        <li><span lang="pl">Motyw jasny, ciemny albo systemowy.</span><span lang="en">Light, dark or system theme.</span></li>
+        <li><span lang="pl">Kolejność i widoczność kart na dolnym pasku ustawiasz przeciągnięciem.</span><span lang="en">Drag to set the order and visibility of the bottom bar tabs.</span></li>
+        <li><span lang="pl">Gwiazdka zapisuje temat w zakładce Zapisane.</span><span lang="en">The star saves a topic in the Saved tab.</span></li>
+      </ul>
+    </div>
+    <div class="shots two"><img class="phone" src="img/ustawienia.webp" alt="" loading="lazy" width="720" height="1560"><img class="phone" src="img/konto.webp" alt="" loading="lazy" width="720" height="1560"></div>
+  </section>
+
+  <h2><span lang="pl">Uczciwie: plusy i minusy</span><span lang="en">Honestly: pros and cons</span></h2>
+  <div class="cols">
+    <div class="box good">
+      <h3><span lang="pl">Plusy</span><span lang="en">Pros</span></h3>
+      <ul>
+        <li><span lang="pl">Bez reklam, śledzenia i dodatkowych serwerów: aplikacja łączy się tylko z f650gs.pl (i ze Zdjęciami Google przy wysyłaniu zdjęć).</span><span lang="en">No ads, tracking or extra servers: the app only talks to f650gs.pl (and Google Photos when sending photos).</span></li>
+        <li><span lang="pl">Emotki forum zamiast kodów, a emoji z klawiatury Androida działają (w przeglądarce wpis z emoji się nie wysyłał).</span><span lang="en">Forum emoticons instead of codes, and Android keyboard emoji work (in the browser a post with emoji did not go through).</span></li>
+        <li><span lang="pl">Działa na zwykłym koncie forum, nawet gdy wtyczka Tapatalka padnie.</span><span lang="en">Works on your normal forum account, even if the Tapatalk plugin breaks.</span></li>
+        <li><span lang="pl">Kod jest otwarty: każdy może sprawdzić, co robi.</span><span lang="en">The code is open: anyone can check what it does.</span></li>
+      </ul>
+    </div>
+    <div class="box bad">
+      <h3><span lang="pl">Minusy</span><span lang="en">Cons</span></h3>
+      <ul>
+        <li><span lang="pl">Wysyłanie zdjęć wymaga konta Google i na razie działa tylko dla testerów (Google jeszcze nie zweryfikował aplikacji).</span><span lang="en">Sending photos needs a Google account and for now works for testers only (Google has not verified the app yet).</span></li>
+        <li><span lang="pl">Powiadomienia przychodzą co ok. 15 minut (minimum Androida), nie od razu.</span><span lang="en">Notifications arrive about every 15 minutes (Android's minimum), not instantly.</span></li>
+        <li><span lang="pl">Forum działa przez nieszyfrowane HTTP: dotyczy to też przeglądarki i Tapatalka.</span><span lang="en">The forum runs on unencrypted HTTP: this applies to the browser and Tapatalk too.</span></li>
+        <li><span lang="pl">Aktualizacje instalujesz ręcznie z tej strony, nie ze Sklepu Play.</span><span lang="en">Updates are installed by hand from this page, not from the Play Store.</span></li>
+      </ul>
+    </div>
+  </div>
+
+</main>
+
+<footer class="wrap">
+  <span lang="pl">Kod źródłowy i historia zmian:</span><span lang="en">Source code and history:</span>
+  <a href="https://github.com/ed7fanboy/f650gs">github.com/ed7fanboy/f650gs</a> ·
+  <span lang="pl">Aplikacja nie jest oficjalną aplikacją forum.</span><span lang="en">This is not an official forum app.</span>
+</footer>
+</body>
+</html>
