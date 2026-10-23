@@ -121,8 +121,8 @@ footer { padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
         <span lang="pl">Pobierz APK</span><span lang="en">Download APK</span>
       </a>
       <div class="meta">
-        <span lang="pl">Wersja</span><span lang="en">Version</span> 0.17.0 · 3,5 MB · Android 7.0+<br>
-        SHA-256: <code id="sha">f709f0453af26397520841a2d70c573bbacfc3a43c6090237276101abba7ccd0</code>
+        <span lang="pl">Wersja</span><span lang="en">Version</span> 0.17.1 · 3,5 MB · Android 7.0+<br>
+        SHA-256: <code id="sha">e9396f20eb3f7b49ec8dcde1f7df9fa0cf7ac1a2e161a804bacc6e9f7cc8f50d</code>
       </div>
     </div>
     <p class="lead">
@@ -141,8 +141,8 @@ footer { padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
   </ol>
   <h2 id="zdjecia"><span lang="pl">Jak dodać zdjęcia do wpisu</span><span lang="en">How to add photos to a post</span></h2>
   <div class="box note">
-    <span lang="pl"><b>Na razie tylko dla testerów.</b> Google jeszcze nie zweryfikował aplikacji, więc wysyłanie zdjęć działa tylko dla kont z listy testerów. Wyślij <b>xelowi</b> (wiadomość prywatna na forum) adres Gmail, którego używasz w telefonie, a dopisze Cię do listy. Bez tego Google nie pozwoli się zalogować do zdjęć. Czytanie zdjęć w postach działa dla wszystkich.</span>
-    <span lang="en"><b>Testers only for now.</b> Google has not verified the app yet, so sending photos works only for accounts on the tester list. Send <b>xel</b> (a private message on the forum) the Gmail address you use on the phone, and you will be added to the list. Without it Google will not let you sign in for photos. Viewing photos in posts works for everyone.</span>
+    <span lang="pl"><b>Na razie tylko dla testerów.</b> Google jeszcze nie zweryfikował aplikacji, więc wysyłanie zdjęć działa tylko dla kont z listy testerów. Wyślij <b>xelowi</b> (wiadomość prywatna na forum) adres Gmail, którego używasz w telefonie, a dopisze Cię do listy. Bez tego Google nie pozwoli się zalogować do zdjęć. Czytanie zdjęć w postach działa dla wszystkich. <a href="#bezpieczenstwo">Czy to bezpieczne?</a></span>
+    <span lang="en"><b>Testers only for now.</b> Google has not verified the app yet, so sending photos works only for accounts on the tester list. Send <b>xel</b> (a private message on the forum) the Gmail address you use on the phone, and you will be added to the list. Without it Google will not let you sign in for photos. Viewing photos in posts works for everyone. <a href="#bezpieczenstwo">Is it safe?</a></span>
   </div>
   <ol class="steps">
     <li><span lang="pl">W odpowiedzi, nowym temacie albo wiadomości ustaw kursor tam, gdzie ma być zdjęcie, i stuknij <b>📷 Dodaj zdjęcie</b> (w odpowiedzi: przycisk 📷 obok pola tekstu).</span><span lang="en">In a reply, new topic or message, put the cursor where the photo should go and tap <b>📷 Dodaj zdjęcie</b> (in a reply: the 📷 button next to the text box).</span></li>
@@ -159,6 +159,37 @@ footer { padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
     <img class="phone" src="img/zdjecia4.webp" alt="" loading="lazy" width="720" height="1560">
   </div>
   <p class="sub"><span lang="pl">Od lewej: kroki 1, 2, 4 i 5. Zdjęcia na zrzutach są przykładowe.</span><span lang="en">From the left: steps 1, 2, 4 and 5. The photos in the screenshots are samples.</span></p>
+
+  <h2 id="bezpieczenstwo"><span lang="pl">Czy bezpiecznie dać aplikacji dostęp do konta Google?</span><span lang="en">Is it safe to give the app access to my Google account?</span></h2>
+  <p><span lang="pl">Tak. Aplikacja robi to samo, co dotąd robiliście na forum ręcznie: zdjęcie trafia do Twoich Zdjęć Google, album jest udostępniony linkiem, a adres zdjęcia wchodzi do wpisu jako obrazek. Nic ponadto.</span>
+  <span lang="en">Yes. The app does what members have done by hand so far: the photo goes to your Google Photos, the album is shared by link, and the photo's address goes into the post as an image. Nothing more.</span></p>
+  <div class="cols">
+    <div class="box good">
+      <h3><span lang="pl">Co aplikacja robi</span><span lang="en">What the app does</span></h3>
+      <ul>
+        <li><span lang="pl">Prosi Google o <b>jedno uprawnienie</b>: „dodawanie do Zdjęć Google” (<code>photoslibrary.appendonly</code>). Według Google pozwala ono tylko wysyłać nowe zdjęcia i tworzyć albumy, a nowe zdjęcia mogą trafić wyłącznie do Twojej biblioteki i do albumu utworzonego przez aplikację.</span><span lang="en">It asks Google for <b>one permission</b>: "add to Google Photos" (<code>photoslibrary.appendonly</code>). According to Google it only allows uploading new photos and creating albums, and new photos can only go to your library and to the album the app created.</span></li>
+        <li><span lang="pl">Tworzy jeden album „f650gs.pl zdjęcia” i dodaje do niego <b>tylko zdjęcia, które sam wybierzesz</b>.</span><span lang="en">It creates one album, "f650gs.pl zdjęcia", and adds <b>only the photos you pick</b>.</span></li>
+        <li><span lang="pl">Album udostępniasz linkiem <b>Ty</b>, raz (od 2025 roku Google nie pozwala na to aplikacjom).</span><span lang="en"><b>You</b> share the album by link, once (since 2025 Google no longer lets apps do this).</span></li>
+        <li><span lang="pl">Aplikacja czyta publiczną stronę albumu, tę samą, którą pokazuje przeglądarka, znajduje na niej Twoje zdjęcie i wstawia jego adres do wpisu.</span><span lang="en">The app reads the album's public page, the same one a browser shows, finds your photo there and puts its address into the post.</span></li>
+      </ul>
+    </div>
+    <div class="box bad">
+      <h3><span lang="pl">Czego aplikacja nie może</span><span lang="en">What the app cannot do</span></h3>
+      <ul>
+        <li><span lang="pl">Zobaczyć, zmienić ani usunąć Twoich innych zdjęć i albumów.</span><span lang="en">See, change or delete your other photos and albums.</span></li>
+        <li><span lang="pl">Dostać się do Gmaila, Dysku, kontaktów ani innych danych konta Google.</span><span lang="en">Get into Gmail, Drive, contacts or any other Google account data.</span></li>
+        <li><span lang="pl">Poznać Twojego hasła do Google: logujesz się w okienku Google, nie aplikacji.</span><span lang="en">Learn your Google password: you sign in in Google's own window, not the app's.</span></li>
+        <li><span lang="pl">Wysyłać czegokolwiek gdzie indziej niż na f650gs.pl i do Google. Klucza dostępu od Google nie zapisuje, używa go tylko podczas wysyłania.</span><span lang="en">Send anything anywhere other than f650gs.pl and Google. It does not store Google's access key, it only uses it while uploading.</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="box note">
+    <span lang="pl"><b>Pamiętaj:</b> każdy, kto ma link do albumu, widzi wszystkie zdjęcia w „f650gs.pl zdjęcia”, tak samo jak przy udostępnianiu ręcznym. Nie dodawaj tam prywatnych zdjęć. Zdjęcia z albumu usuniesz w aplikacji Zdjęcia Google.</span>
+    <span lang="en"><b>Remember:</b> anyone with the album link sees every photo in "f650gs.pl zdjęcia", just as with sharing by hand. Do not put private photos there. Delete photos from the album in the Google Photos app.</span>
+  </div>
+  <p><span lang="pl"><b>Jak cofnąć dostęp:</b> w koncie Google otwórz <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>, wybierz aplikację i stuknij „Usuń dostęp”. Zdjęcia już dodane zostają w Twoim albumie.</span>
+  <span lang="en"><b>How to revoke access:</b> in your Google account open <a href="https://myaccount.google.com/connections">myaccount.google.com/connections</a>, choose the app and tap "Remove access". Photos already added stay in your album.</span></p>
+  <p class="sub"><span lang="pl">Sprawdź sam: kod jest otwarty, cała obsługa zdjęć jest w plikach <code>Photos.kt</code>, <code>GooglePhotosApi.kt</code> i <code>SharedAlbumPage.kt</code> w <a href="https://github.com/ed7fanboy/f650gs">repozytorium</a>.</span><span lang="en">Check for yourself: the code is open, all of the photo handling is in <code>Photos.kt</code>, <code>GooglePhotosApi.kt</code> and <code>SharedAlbumPage.kt</code> in the <a href="https://github.com/ed7fanboy/f650gs">repository</a>.</span></p>
 
   <h2><span lang="pl">W czym aplikacja jest lepsza od forum w przeglądarce</span><span lang="en">What the app does better than the forum in a browser</span></h2>
   <p class="sub"><span lang="pl">Teksty i zdjęcia innych użytkowników na zrzutach są rozmyte; ekran tematu pokazuje przykładowy wpis.</span><span lang="en">Other members' text and photos are blurred in the screenshots; the topic screen shows a sample post.</span></p>
