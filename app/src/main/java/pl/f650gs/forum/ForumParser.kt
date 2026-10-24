@@ -45,7 +45,14 @@ object ForumParser {
 
     /** The profile address behind a member link or photo, or "" when there is none. */
     private fun profileLink(element: Element?): String =
-        element?.absUrl("href")?.takeIf { it.contains("/profile/") }?.let(::safeForumUrl).orEmpty()
+        element?.absUrl("href")?.takeIf { it.contains("/profile/") }?.let(::safeForumUrl)?.let(::withoutWarnReference).orEmpty()
+
+    /**
+     * Drops the `wr` ("warn reference") query the forum adds to member links for administrators and
+     * moderators, so those links open the app's own profile screen like everyone else's.
+     */
+    fun withoutWarnReference(url: String): String =
+        url.replace(Regex("""([?&])wr=[^&#]*&?"""), "$1").replace(Regex("""[?&]+(?=#|$)"""), "")
 
     /** Member photo URL; IPS letter avatars as inline SVG are left to the app's own letter badge. */
     private fun photoUrl(image: Element?): String =
@@ -236,6 +243,11 @@ object ForumParser {
                 authorUrl = profileLink(article.selectFirst(".cAuthorPane_author a[href*=/profile/], .ipsComment_author a[href*=/profile/]")),
                 likedBy = reactions?.selectFirst(".ipsReact_overview")?.text().clean()
                     .replace(" reacted to this", " lubi to").replace(Regex("^You\\b"), "Ty").replace(" others", " innych"),
+                modActions = article.selectFirst("input[data-role=moderation]")?.let { box ->
+                    // A hidden post offers "hide" in its list, which the forum's own menu turns into "unhide".
+                    box.attr("data-actions").split(' ').filter { it.isNotBlank() }
+                        .map { if (it == "hide" && box.attr("data-state").contains("hidden") && !box.attr("data-state").contains("unhidden")) "unhide" else it }
+                }.orEmpty(),
             ).takeIf { it.text.isNotBlank() || it.html.isNotBlank() }
         }
         val title = document.selectFirst("h1.ipsType_pageTitle")?.text().clean().ifBlank { "Temat" }
@@ -245,7 +257,55 @@ object ForumParser {
             focusPostId = focus.takeIf { id -> posts.any { it.id == id } } ?: 0,
             pager = pager(document),
             replyForm = replyForm(document),
+            moderation = moderationForm(document),
+            topicModeration = topicModeration(document),
         )
+    }
+
+    /** The "select posts, pick an action" form the forum shows administrators and moderators under a topic. */
+    fun moderationForm(document: Document): ModerationForm? {
+        val form = document.selectFirst("form[data-role=moderationTools]") ?: return null
+        // The form wraps the posts: their own hidden fields (polls, embeds) are not part of it.
+        val hidden = form.select("input[type=hidden][name]").filter { input -> input.parents().none { it.normalName() == "article" } }
+            .associate { it.attr("name") to it.attr("value") }
+        val actions = form.select("select[name=modaction] option").map { it.attr("value") to it.text().clean() }
+            .filter { it.first.isNotBlank() }
+        if (actions.isEmpty() || !hidden.containsKey("csrfKey")) return null
+        return ModerationForm(safeForumUrl(form.absUrl("action")), hidden, actions)
+    }
+
+    /** Staff menu actions the app carries out itself; the rest (messages, history) stay on the forum page. */
+    private val topicActions = setOf("feature", "unfeature", "pin", "unpin", "hide", "unhide", "lock", "unlock", "move", "merge", "delete")
+
+    fun topicModeration(document: Document): TopicModeration? {
+        val actions = document.select("#elTopicActions_menu a[href]").mapNotNull { link ->
+            val url = safeForumUrl(link.absUrl("href"))
+            val key = Regex("""[?&]action=(\w+)""").find(url)?.groupValues?.get(1)
+                ?: Regex("""[?&]do=(move|merge)(?:&|$)""").find(url)?.groupValues?.get(1)
+            key?.takeIf { it in topicActions }?.let { TopicAction(it, link.text().clean(), url) }
+        }
+        return actions.takeIf { it.isNotEmpty() }?.let(::TopicModeration)
+    }
+
+    /** A staff dialog's form (hide reason, merge address): the form that has all [names] as fields. */
+    fun dialogForm(document: Document, names: Collection<String>): ReplyForm? {
+        val form = document.select("form").firstOrNull { form -> names.all { form.selectFirst("[name=$it]") != null } } ?: return null
+        val fields = form.select("input[type=hidden][name]").associate { it.attr("name") to it.attr("value") }
+        return ReplyForm(safeForumUrl(form.absUrl("action")), fields, "")
+    }
+
+    /** The move form as the forum sends it without scripts: every section in one select, "- " per level. */
+    fun moveForm(document: Document): MoveForm? {
+        val form = document.select("form").firstOrNull { it.selectFirst("select[name=move_to]") != null } ?: return null
+        val hidden = form.select("input[type=hidden][name]").filter { it.attr("name") !in setOf("move_to", "move_keep_link") }
+            .associate { it.attr("name") to it.attr("value") }
+        val targets = form.select("select[name=move_to] option").filter { !it.hasAttr("disabled") && it.attr("value").isNotBlank() }
+            .map { option ->
+                val prefix = Regex("""^[-\s\u00a0]*""").find(option.text())!!.value
+                MoveTarget(option.attr("value"), option.text().removePrefix(prefix).clean(), prefix.count { it == '-' })
+            }
+        if (targets.isEmpty() || !hidden.containsKey("csrfKey")) return null
+        return MoveForm(safeForumUrl(form.absUrl("action")), hidden, targets)
     }
 
     /** Null when the page is not signed in. */

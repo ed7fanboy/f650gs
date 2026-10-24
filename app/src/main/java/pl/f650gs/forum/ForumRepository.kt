@@ -171,6 +171,46 @@ class ForumRepository {
         if (problem.isNotBlank()) error(problem)
     }
 
+    /**
+     * Sends the topic's moderation form: [action] (e.g. "merge", "delete") on the posts [postIds].
+     * A delete first answers with the forum's "are you sure?" form, sent again confirmed (the
+     * member already confirmed in the app). Done when the forum shows no error; the page it lands
+     * on may be empty, e.g. after deleting the last page's posts.
+     */
+    fun moderate(form: ModerationForm, action: String, postIds: Collection<Long>) {
+        val fields = form.hidden + ("modaction" to action) + postIds.associate { "multimod[$it]" to "1" }
+        fun send(url: String, data: Map<String, String>) =
+            connect(url).method(org.jsoup.Connection.Method.POST).data(data).execute().parse()
+        var document = send(form.action, fields)
+        ForumParser.confirmForm(document)?.let { confirm ->
+            document = send(confirm.action, fields + confirm.fields + ("wasConfirmed" to "1"))
+        }
+        val problem = ForumParser.pageErrors(document)
+        if (problem.isNotBlank()) error(problem)
+        if (ForumParser.confirmForm(document) != null) error("Forum nie przyjęło potwierdzenia. Zrób to na stronie forum.")
+    }
+
+    /** The move form for a topic, asked for in its no-script shape so all sections come in one list. */
+    fun moveForm(moveUrl: String): MoveForm =
+        ForumParser.moveForm(page("$moveUrl&_nodeSelectName=move_to&_noJs=1")) ?: error("Forum nie pokazało listy działów.")
+
+    fun moveTopic(form: MoveForm, targetId: String) {
+        val fields = form.hidden + mapOf("move_to" to targetId, "move_keep_link" to "0", "returnto" to "item")
+        val document = connect(form.action).method(org.jsoup.Connection.Method.POST).data(fields).execute().parse()
+        val problem = ForumParser.pageErrors(document)
+        if (problem.isNotBlank()) error(problem)
+        if (ForumParser.moveForm(document) != null) error("Forum nie przeniosło tematu.")
+    }
+
+    /** Fills in the staff dialog at [url] (hide reason, merge address) with [values] and sends it. */
+    fun sendTopicForm(url: String, values: Map<String, String>) {
+        val form = ForumParser.dialogForm(page(url), values.keys) ?: error("Forum nie pokazało formularza.")
+        val document = connect(form.action).method(org.jsoup.Connection.Method.POST).data(form.fields + values).execute().parse()
+        val problem = ForumParser.pageErrors(document)
+        if (problem.isNotBlank()) error(problem)
+        if (ForumParser.dialogForm(document, values.keys) != null) error("Forum nie przyjęło formularza.")
+    }
+
     /** The page at [url] drawn natively, or null when the app should show the web page instead. */
     fun nativePage(url: String): NativePage? {
         val response = connect(url).execute()

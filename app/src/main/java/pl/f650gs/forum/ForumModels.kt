@@ -91,6 +91,8 @@ data class ForumPost(
     val photo: String = "",
     val editUrl: String = "",
     val authorUrl: String = "",
+    /** What a moderator may do with this post in a multi-post action ("merge", "delete", "hide"…); empty for members. */
+    val modActions: List<String> = emptyList(),
 )
 
 /** An edit form for an existing post; [originalHtml] is what the editor would start with. */
@@ -122,7 +124,24 @@ data class TopicPage(
     val focusPostId: Long = 0,
     val pager: Pager = Pager(),
     val replyForm: ReplyForm? = null,
+    val moderation: ModerationForm? = null,
+    val topicModeration: TopicModeration? = null,
 )
+
+/** The topic's multi-post moderation form (administrators and moderators): actions as value to label. */
+data class ModerationForm(val action: String, val hidden: Map<String, String>, val actions: List<Pair<String, String>>)
+
+/** The topic's own staff menu, in the forum's order and with its labels (they follow the state: "Odepnij" on a pinned topic). */
+data class TopicModeration(val actions: List<TopicAction>) {
+    fun url(key: String) = actions.firstOrNull { it.key == key }?.url.orEmpty()
+}
+
+/** One staff menu entry: the forum's action name ("pin", "unlock", "move", "merge"…), its label, and its link with csrfKey. */
+data class TopicAction(val key: String, val label: String, val url: String)
+
+/** The forum's "move topic" form: where to send it, its hidden fields, and the sections a topic may go to. */
+data class MoveForm(val action: String, val hidden: Map<String, String>, val targets: List<MoveTarget>)
+data class MoveTarget(val id: String, val title: String, val depth: Int)
 
 /** A forum comment form (topic reply or conversation reply): where to post it and its hidden fields. */
 data class ReplyForm(val action: String, val fields: Map<String, String>, val editor: String) {

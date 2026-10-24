@@ -123,6 +123,11 @@ class MainActivity : Activity() {
     internal var chatList: LinearLayout? = null
     internal var conversation: ConversationPage? = null
     internal var topicPage: TopicPage? = null
+    // Posts ticked for a moderation action (administrators and moderators), and the bar that acts on them.
+    internal val modSelected = linkedSetOf<Long>()
+    internal lateinit var modBar: LinearLayout
+    internal lateinit var modBarLabel: TextView
+    internal var topicPostsWeb: WebView? = null
     internal var scrollToEndAfterLoad = false
     internal lateinit var bottomButton: TextView
     internal lateinit var newTopicButton: TextView
@@ -265,6 +270,8 @@ class MainActivity : Activity() {
         }
         body.addView(pullIndicator, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
+        modBar = buildModBar()
+        root.addView(modBar)
         chatComposer = buildChatComposer()
         root.addView(chatComposer)
 
@@ -733,6 +740,8 @@ class MainActivity : Activity() {
         updateChrome()
         chatList = null
         conversation = null
+        modSelected.clear()
+        updateModBar()
         val composing = signedIn && (currentScreen == Screen.Chatbox || currentScreen is Screen.Conversation)
         chatComposer.visibility = if (composing) View.VISIBLE else View.GONE
         photoButton.visibility = if (currentScreen is Screen.Topic || currentScreen is Screen.Conversation) View.VISIBLE else View.GONE
@@ -864,6 +873,15 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun edit(index: Int) {
             main.post { posts.getOrNull(index)?.let(::startEdit) }
+        }
+
+        @JavascriptInterface
+        fun select(index: Int, on: Boolean) {
+            main.post {
+                val id = posts.getOrNull(index)?.id ?: return@post
+                if (on) modSelected.add(id) else modSelected.remove(id)
+                updateModBar()
+            }
         }
 
         @JavascriptInterface

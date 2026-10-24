@@ -31,6 +31,66 @@ class ForumParserTest {
         assertTrue(items.count { profileUrl.containsMatchIn(it.authorUrl) } >= items.size - 2)
     }
 
+    @Test fun moderatorProfileLinksLoseWarnReference() {
+        assertEquals("http://f650gs.pl/profile/12-name/", ForumParser.withoutWarnReference("http://f650gs.pl/profile/12-name/?wr=eyJhcHAiOiJmb3J1bXMifQ=="))
+        assertEquals("http://f650gs.pl/profile/12-name/?tab=x", ForumParser.withoutWarnReference("http://f650gs.pl/profile/12-name/?wr=abc&tab=x"))
+        assertEquals("http://f650gs.pl/profile/12-name/", ForumParser.withoutWarnReference("http://f650gs.pl/profile/12-name/"))
+        assertEquals("http://f650gs.pl/profile/12-name/#c", ForumParser.withoutWarnReference("http://f650gs.pl/profile/12-name/?wr=abc#c"))
+        assertEquals("http://f650gs.pl/profile/12-name/?tab=x", ForumParser.withoutWarnReference("http://f650gs.pl/profile/12-name/?tab=x&wr=abc"))
+    }
+
+    @Test fun moderationFormAndPostActions() {
+        val html = """<form action="/topic/1-t/?csrfKey=k&amp;do=multimodComment" data-role="moderationTools">
+            <article id="elComment_5" class="ipsComment"><div data-role="commentContent"><p>a</p></div>
+            <input type="checkbox" name="multimod[5]" data-role="moderation" data-actions="split merge hide delete" data-state="unhidden"></article>
+            <article id="elComment_6" class="ipsComment"><div data-role="commentContent"><p>b</p><input type="hidden" name="pollField" value="1"></div>
+            <input type="checkbox" name="multimod[6]" data-role="moderation" data-actions="merge hide delete" data-state="hidden"></article>
+            <input type="hidden" name="csrfKey" value="k"><select name="modaction"><option value="merge">Połącz</option>
+            <optgroup label="Ukryj"><option value="hide">Ukryj</option><option value="unhide">Odkryj</option></optgroup><option value="delete">Usuń</option></select></form>"""
+        val topic = ForumParser.topic(org.jsoup.Jsoup.parse(html, "http://f650gs.pl/"), "http://f650gs.pl/topic/1-t/")
+        assertEquals(listOf("split", "merge", "hide", "delete"), topic.posts[0].modActions)
+        assertEquals(listOf("merge", "unhide", "delete"), topic.posts[1].modActions)
+        val form = topic.moderation!!
+        assertEquals(listOf("merge", "hide", "unhide", "delete"), form.actions.map { it.first })
+        assertEquals("k", form.hidden["csrfKey"])
+        assertNull(form.hidden["pollField"])
+    }
+
+    @Test fun topicModerationMenuAndMoveForm() {
+        val menu = """<ul id="elTopicActions_menu">
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=moderate&amp;action=unfeature">Przestań promować</a></li>
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=moderate&amp;action=unpin">Odepnij</a></li>
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=moderate&amp;action=lock">Zamknij</a></li>
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=move">Przenieś</a></li>
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=merge">Połącz</a></li>
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=moderate&amp;action=delete" data-confirm>Usuń</a></li>
+            <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=modLog">Historia moderacji</a></li></ul>"""
+        val topic = ForumParser.topic(org.jsoup.Jsoup.parse(menu, "http://f650gs.pl/"), "http://f650gs.pl/topic/1-t/")
+        val mod = topic.topicModeration!!
+        assertEquals(listOf("unfeature", "unpin", "lock", "move", "merge", "delete"), mod.actions.map { it.key })
+        assertEquals("Odepnij", mod.actions[1].label)
+        assertTrue(mod.url("move"), mod.url("move").endsWith("csrfKey=k&do=move"))
+        assertEquals("", mod.url("unlock"))
+        assertNull(ForumParser.topic(org.jsoup.Jsoup.parse("<p>x</p>", "http://f650gs.pl/"), "http://f650gs.pl/topic/1-t/").topicModeration)
+
+        val merge = """<form action="http://f650gs.pl/topic/1-t/?do=merge" method="post"><input type="hidden" name="csrfKey" value="k">
+            <input type="url" name="merge_with"><input type="hidden" name="move_keep_link" value="0"></form>"""
+        val dialog = ForumParser.dialogForm(org.jsoup.Jsoup.parse(merge, "http://f650gs.pl/"), listOf("merge_with", "move_keep_link"))!!
+        assertEquals("http://f650gs.pl/topic/1-t/?do=merge", dialog.action)
+        assertEquals("k", dialog.fields["csrfKey"])
+        assertNull(ForumParser.dialogForm(org.jsoup.Jsoup.parse(merge, "http://f650gs.pl/"), listOf("hide_reason")))
+
+        val form = """<form action="http://f650gs.pl/topic/1-t/?do=move&amp;_nodeSelectName=move_to&amp;_noJs=1" method="post">
+            <input type="hidden" name="form_submitted" value="1"><input type="hidden" name="csrfKey" value="k">
+            <select name="move_to"><option value="9" disabled>Zaplecze</option><option value="10" disabled>- Forumowe...</option>
+            <option value="25">- Wysypisko</option><option value="48">- - Silnik</option></select>
+            <input type="hidden" name="move_keep_link" value="0"></form>"""
+        val move = ForumParser.moveForm(org.jsoup.Jsoup.parse(form, "http://f650gs.pl/"))!!
+        assertEquals(listOf(MoveTarget("25", "Wysypisko", 1), MoveTarget("48", "Silnik", 2)), move.targets)
+        assertEquals(mapOf("form_submitted" to "1", "csrfKey" to "k"), move.hidden)
+        assertTrue(move.action, move.action.contains("_noJs=1"))
+    }
+
     @Test fun categoriesListForums() {
         val categories = ForumParser.categories(page("index.html", "http://f650gs.pl/"))
         assertTrue(categories.size >= 3)

@@ -196,6 +196,10 @@ internal fun MainActivity.renderTopic(page: TopicPage) {
     scrollToEndAfterLoad = false
     content.removeAllViews()
     content.addView(hero(page.title, page.forum.ifBlank { "Forum F650GS" }))
+    if (signedIn && page.topicModeration != null) content.addView(row {
+        setPadding(0, 0, 0, dp(4))
+        addView(pill("Moderuj temat…", TEAL_LIGHT, LINK) { chooseTopicAction(page) })
+    })
     content.addView(sectionHeading("Wpisy", page.pager.label.ifBlank { "${page.posts.size} pokazanych" }))
     content.addView(pagerRow(page))
     // The lower pager waits for the posts to take their height, or both pagers sit together while they load.
@@ -204,13 +208,247 @@ internal fun MainActivity.renderTopic(page: TopicPage) {
     else {
         bottomPager.visibility = View.GONE
         content.addView(topicPostsView(page.posts, if (scrollToEnd) -1 else page.focusPostId, signedIn && page.replyForm != null,
-            page.pager.firstNumber) { bottomPager.visibility = View.VISIBLE })
+            page.pager.firstNumber, moderate = page.moderation != null) { bottomPager.visibility = View.VISIBLE }.also { topicPostsWeb = it })
     }
     content.addView(bottomPager)
     // Native reply box when the forum offers a reply form; the forum page otherwise (locked topic, guest).
     chatComposer.visibility = if (signedIn && page.replyForm != null) View.VISIBLE else View.GONE
     if (chatComposer.visibility != View.VISIBLE && signedIn) {
         content.addView(openSiteButton("Odpowiedz na stronie forum") { openForumWeb(page.url, title = "Odpowiedź w temacie") })
+    }
+}
+
+/** The bar above the reply box while posts are ticked: how many, an action menu, and clearing the ticks. */
+internal fun MainActivity.buildModBar(): LinearLayout = row {
+    gravity = Gravity.CENTER_VERTICAL
+    setBackgroundColor(CARD)
+    setPadding(dp(16), dp(8), dp(12), dp(8))
+    visibility = View.GONE
+    modBarLabel = label("", 14f, INK, bold = true)
+    addView(modBarLabel, LinearLayout.LayoutParams(0, -2, 1f))
+    addView(pill("Moderuj…", ACCENT_FILL, WHITE) { chooseModAction() })
+    addView(pill("✕", TEAL_LIGHT, LINK) {
+        modSelected.clear()
+        topicPostsWeb?.evaluateJavascript("document.querySelectorAll('.modBox').forEach(function(b){b.checked=false})", null)
+        updateModBar()
+    }.apply { contentDescription = "Odznacz wszystkie" }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(8) })
+}
+
+/** The ticked posts that are on the topic page now shown (ticks from a page being replaced do not count). */
+internal fun MainActivity.selectedPosts(): List<ForumPost> =
+    topicPage?.takeIf { currentScreen is Screen.Topic }?.posts?.filter { it.id in modSelected }.orEmpty()
+
+internal fun MainActivity.updateModBar() {
+    val count = if (topicPage?.moderation == null) 0 else selectedPosts().size
+    modBarLabel.text = "Zaznaczone: $count"
+    modBar.visibility = if (count == 0) View.GONE else View.VISIBLE
+}
+
+/** "1 wpis", "3 wpisy", "5 wpisów". */
+internal fun postsCount(count: Int): String = when {
+    count == 1 -> "1 wpis"
+    count % 10 in 2..4 && count % 100 !in 12..14 -> "$count wpisy"
+    else -> "$count wpisów"
+}
+
+/**
+ * The actions every ticked post allows, as the forum names them. Splitting is left to the forum's
+ * page: it asks for a new topic's title and section.
+ */
+internal fun MainActivity.chooseModAction() {
+    val page = topicPage ?: return
+    val form = page.moderation ?: return
+    val selected = selectedPosts()
+    if (selected.isEmpty()) return updateModBar()
+    val actions = form.actions.filter { (value, _) ->
+        value != "split" && selected.all { value in it.modActions } && (value != "merge" || selected.size > 1)
+    }
+    if (actions.isEmpty()) {
+        android.widget.Toast.makeText(this, "Dla zaznaczonych wpisów nie ma wspólnej akcji.", android.widget.Toast.LENGTH_SHORT).show()
+        return
+    }
+    AlertDialog.Builder(this)
+        .setTitle(postsCount(selected.size))
+        .setItems(actions.map { it.second }.toTypedArray()) { _, which -> confirmModAction(page, form, actions[which], selected) }
+        .show()
+}
+
+internal fun MainActivity.confirmModAction(page: TopicPage, form: ModerationForm, action: Pair<String, String>, posts: List<ForumPost>) {
+    val message = when (action.first) {
+        "delete" -> "Usunąć zaznaczone (${postsCount(posts.size)})? Tego nie da się cofnąć."
+        "merge" -> "Połączyć zaznaczone (${postsCount(posts.size)}) w jeden? Treść trafi do najstarszego z nich, pozostałe znikną."
+        else -> null
+    }
+    if (message == null) return runModAction(page, form, action, posts)
+    AlertDialog.Builder(this)
+        .setMessage(message)
+        .setPositiveButton(action.second) { _, _ -> runModAction(page, form, action, posts) }
+        .setNegativeButton("Anuluj", null)
+        .show()
+}
+
+internal fun MainActivity.runModAction(page: TopicPage, form: ModerationForm, action: Pair<String, String>, posts: List<ForumPost>) {
+    repository.updateSessionCookies(CookieManager.getInstance().getCookie("http://f650gs.pl/"))
+    io.execute {
+        val result = runCatching { repository.moderate(form, action.first, posts.map { it.id }) }
+        main.post {
+            result.onSuccess {
+                android.widget.Toast.makeText(this, "Gotowe: ${action.second.lowercase()}", android.widget.Toast.LENGTH_SHORT).show()
+                // Only while that topic is still open; a page emptied by a delete may be gone, so go to the topic's end.
+                if (currentScreen is Screen.Topic && topicPage?.url == page.url) {
+                    val emptied = action.first == "delete" && posts.size == page.posts.size
+                    openTopicPage(if (emptied) lastCommentUrl(page.url) else page.url)
+                }
+            }.onFailure {
+                android.widget.Toast.makeText(this, it.localizedMessage ?: "Nie udało się.", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+}
+
+/** Section the quick "to the dump" move sends topics to. */
+private const val DUMP_FORUM = "Wysypisko"
+
+/** The topic's staff menu as the forum offers it (labels follow the topic's state), plus the quick move to the dump. */
+internal fun MainActivity.chooseTopicAction(page: TopicPage) {
+    val mod = page.topicModeration ?: return
+    val items = buildList<Triple<String, Int, () -> Unit>> {
+        if (mod.url("move").isNotBlank() && !page.forum.equals(DUMP_FORUM, ignoreCase = true)) {
+            add(Triple("Na wysypisko", R.drawable.ic_mod_dump) { moveTopic(page, mod.url("move"), toDump = true) })
+        }
+        mod.actions.forEach { action ->
+            val run: () -> Unit = when (action.key) {
+                "move" -> { { moveTopic(page, action.url, toDump = false) } }
+                "merge" -> { { mergeTopic(page, action.url) } }
+                "hide" -> { { hideTopic(page, action.url) } }
+                "delete" -> { {
+                    AlertDialog.Builder(this@chooseTopicAction)
+                        .setMessage("Usunąć cały temat „${page.title}” ze wszystkimi wpisami? Tego nie da się cofnąć.")
+                        .setPositiveButton(action.label) { _, _ -> runTopicAction(page, "Temat usunięty", leave = true) { repository.forumAction(action.url) } }
+                        .setNegativeButton("Anuluj", null)
+                        .show()
+                } }
+                else -> { { runTopicAction(page, "Gotowe: ${action.label.lowercase()}") { repository.forumAction(action.url) } } }
+            }
+            val label = if (action.key in setOf("move", "merge", "hide")) "${action.label}…" else action.label
+            add(Triple(label, topicActionIcon(action.key), run))
+        }
+    }
+    val adapter = object : android.widget.ArrayAdapter<Triple<String, Int, () -> Unit>>(this, android.R.layout.select_dialog_item, items) {
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+            (super.getView(position, convertView, parent) as TextView).apply {
+                val (label, icon, _) = items[position]
+                text = label
+                val drawable = getDrawable(icon)?.mutate()?.apply { setTint(currentTextColor) }
+                setCompoundDrawablesRelativeWithIntrinsicBounds(drawable, null, null, null)
+                compoundDrawablePadding = dp(20)
+            }
+    }
+    AlertDialog.Builder(this)
+        .setTitle("Temat")
+        .setAdapter(adapter) { _, which -> items[which].third() }
+        .show()
+}
+
+internal fun topicActionIcon(key: String): Int = when (key) {
+    "feature" -> R.drawable.ic_mod_feature
+    "unfeature" -> R.drawable.ic_mod_unfeature
+    "pin" -> R.drawable.ic_mod_pin
+    "unpin" -> R.drawable.ic_mod_unpin
+    "hide" -> R.drawable.ic_mod_hide
+    "unhide" -> R.drawable.ic_visibility
+    "lock" -> R.drawable.ic_mod_lock
+    "unlock" -> R.drawable.ic_mod_unlock
+    "move" -> R.drawable.ic_mod_move
+    "merge" -> R.drawable.ic_mod_merge
+    else -> R.drawable.ic_mod_delete
+}
+
+/** A dialog with one text field; [send] gets the trimmed text. */
+internal fun MainActivity.topicTextDialog(title: String, message: String, hint: String, value: String, button: String, send: (String) -> Unit) {
+    val input = formField(hint, 1).apply { setText(value) }
+    val box = FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(input) }
+    AlertDialog.Builder(this)
+        .setTitle(title)
+        .setMessage(message)
+        .setView(box)
+        .setPositiveButton(button) { _, _ -> send(input.text.toString().trim()) }
+        .setNegativeButton("Anuluj", null)
+        .show()
+}
+
+internal fun MainActivity.hideTopic(page: TopicPage, url: String) =
+    topicTextDialog("Ukryj temat", "Ukryty temat widzą tylko moderatorzy.", "Powód (nieobowiązkowy)", "", "Ukryj") { reason ->
+        runTopicAction(page, "Temat ukryty") { repository.sendTopicForm(url, mapOf("hide_reason" to reason)) }
+    }
+
+/**
+ * Merges another topic into this one, as the forum's "Połącz": its posts move here and this topic keeps its title.
+ * Takes the other topic's address or number; a topic link on the clipboard is filled in.
+ */
+internal fun MainActivity.mergeTopic(page: TopicPage, url: String) {
+    val clip = runCatching {
+        (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString()
+    }.getOrNull().orEmpty().trim()
+    val ownId = Regex("""/topic/(\d+)""").find(page.url)?.groupValues?.get(1)
+    val suggested = clip.takeIf { Regex("""f650gs\.pl/topic/(\d+)""").find(it)?.groupValues?.get(1).let { id -> id != null && id != ownId } }.orEmpty()
+    topicTextDialog("Połącz z tematem", "Wpisy z podanego tematu trafią tutaj, a tamten temat zniknie. Ten zachowa tytuł i adres.",
+        "Adres lub numer tematu", suggested, "Połącz") { text ->
+        val id = Regex("""^(\d+)$""").find(text)?.groupValues?.get(1) ?: Regex("""f650gs\.pl/topic/(\d+)""").find(text)?.groupValues?.get(1)
+        when {
+            id == null -> android.widget.Toast.makeText(this, "To nie jest adres tematu z f650gs.pl.", android.widget.Toast.LENGTH_LONG).show()
+            id == ownId -> android.widget.Toast.makeText(this, "Nie można połączyć tematu z nim samym.", android.widget.Toast.LENGTH_LONG).show()
+            else -> runTopicAction(page, "Tematy połączone") {
+                val address = if (text == id) "http://f650gs.pl/topic/$id/" else text.substringBefore('#')
+                repository.sendTopicForm(url, mapOf("merge_with" to address, "move_keep_link" to "0"))
+            }
+        }
+    }
+}
+
+/** Reads the forum's move form, then moves the topic to the dump or to a section picked from its list. */
+internal fun MainActivity.moveTopic(page: TopicPage, moveUrl: String, toDump: Boolean) {
+    repository.updateSessionCookies(CookieManager.getInstance().getCookie("http://f650gs.pl/"))
+    io.execute {
+        val result = runCatching { repository.moveForm(moveUrl) }
+        main.post {
+            result.onFailure {
+                android.widget.Toast.makeText(this, it.localizedMessage ?: "Nie udało się.", android.widget.Toast.LENGTH_LONG).show()
+            }.onSuccess { form ->
+                if (toDump) {
+                    val dump = form.targets.firstOrNull { it.title.equals(DUMP_FORUM, ignoreCase = true) }
+                        ?: return@onSuccess android.widget.Toast.makeText(this, "Forum nie ma działu $DUMP_FORUM.", android.widget.Toast.LENGTH_LONG).show()
+                    runTopicAction(page, "Przeniesiono: $DUMP_FORUM") { repository.moveTopic(form, dump.id) }
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Przenieś do")
+                        .setItems(form.targets.map { "\u2003".repeat((it.depth - 1).coerceAtLeast(0)).plus(it.title) }.toTypedArray()) { _, which ->
+                            val target = form.targets[which]
+                            runTopicAction(page, "Przeniesiono: ${target.title}") { repository.moveTopic(form, target.id) }
+                        }
+                        .setNegativeButton("Anuluj", null)
+                        .show()
+                }
+            }
+        }
+    }
+}
+
+/** Runs a topic action, then shows the topic again (or, with [leave], goes back from a topic that is gone). */
+internal fun MainActivity.runTopicAction(page: TopicPage, done: String, leave: Boolean = false, work: () -> Unit) {
+    repository.updateSessionCookies(CookieManager.getInstance().getCookie("http://f650gs.pl/"))
+    io.execute {
+        val result = runCatching(work)
+        main.post {
+            result.onSuccess {
+                android.widget.Toast.makeText(this, done, android.widget.Toast.LENGTH_SHORT).show()
+                if (currentScreen is Screen.Topic && topicPage?.url == page.url) {
+                    if (leave) goBack() else openTopicPage(page.url)
+                }
+            }.onFailure {
+                android.widget.Toast.makeText(this, it.localizedMessage ?: "Nie udało się.", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 }
 
@@ -257,6 +495,7 @@ internal fun MainActivity.topicPostsView(
     focusPostId: Long = 0,
     canQuote: Boolean = false,
     firstNumber: Int = 1,
+    moderate: Boolean = false,
     onLaidOut: () -> Unit = {},
 ): WebView {
     val html = buildString {
@@ -309,6 +548,7 @@ internal fun MainActivity.topicPostsView(
         append(if (darkMode) "#36484b" else "#cbd7df")
         append(";padding:5px}hr{border:0;border-top:1px solid ").append(if (darkMode) "#36484b" else "#dbe4e8").append("}")
         append("a.who{display:contents;color:inherit;text-decoration:none}")
+        append(".modBox{flex:none;width:22px;height:22px;margin:0 0 0 4px;accent-color:").append(if (darkMode) "#2f5a78" else "#0066b1").append("}")
         append(".avatar{position:relative;flex:none;width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;overflow:hidden}")
         append(".avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;max-height:none!important;border-radius:0!important}")
         append(".postFooter{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:9px;border-top:1px solid ")
@@ -329,7 +569,12 @@ internal fun MainActivity.topicPostsView(
             if (post.date.isNotBlank()) append(" · ").append(android.text.Html.escapeHtml(post.date))
             append("</span>")
             if (post.authorUrl.isNotBlank()) append("</a>")
-            append("<span class=\"postNumber\">#").append(firstNumber + index).append("</span></header>")
+            append("<span class=\"postNumber\">#").append(firstNumber + index).append("</span>")
+            if (moderate && post.modActions.isNotEmpty()) {
+                append("<input type=\"checkbox\" class=\"modBox\" aria-label=\"Zaznacz wpis\" onchange=\"NativePosts.select(")
+                append(index).append(",this.checked)\">")
+            }
+            append("</header>")
             append("<div class=\"postBody\">").append(stripSignatureHtml(post.html)).append("</div>")
             append(likeFooterHtml(index, post, canQuote))
             append("</article>")
@@ -418,7 +663,7 @@ internal fun MainActivity.focusScript(focusPostId: Long): String {
 internal fun MainActivity.routePostLink(uri: Uri) {
     if (uri.scheme !in setOf("http", "https")) return
     if (uri.toString().startsWith(MENTION_LOOKUP)) return openMention(uri.getQueryParameter("name").orEmpty())
-    if (isProfileUrl(uri.toString())) return navigate(Screen.Profile("", uri.toString()))
+    if (isProfileUrl(uri.toString())) return navigate(Screen.Profile("", ForumParser.withoutWarnReference(uri.toString())))
     if (uri.host?.lowercase()?.let { it == "f650gs.pl" || it.endsWith(".f650gs.pl") } == true) {
         val path = uri.path.orEmpty()
         val action = uri.getQueryParameter("do")

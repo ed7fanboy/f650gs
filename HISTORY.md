@@ -87,6 +87,12 @@
 - Back and tab switches open the screen at the top instead of at the previous screen's scroll position.
 - 0.19.1: YouTube films in posts show as a card with the thumbnail and title (from the forum, else YouTube); "Pełny ekran" above the reply box while typing hides the posts and gives the whole screen to the text (Zwiń or Back returns).
 
+## 0.20 (2026-10-24)
+
+- Staff view: member links in topics open the native profile for administrators and moderators too (the forum adds a `wr=` parameter to them for staff).
+- Moderating posts: a checkbox on each post the account may moderate; with posts ticked, a bar offers the actions all of them allow (Połącz, Ukryj/Odkryj, Usuń, Zatwierdź), with a confirmation before deleting or merging. Splitting stays on the forum page.
+- Moderating topics: "Moderuj temat…" under the title lists the forum's own staff menu with icons (Promuj, Podepnij, Ukryj, Zamknij, Przenieś, Połącz, Usuń, and their undo forms on a promoted, pinned, hidden or closed topic), plus "Na wysypisko", a one-tap move to Zaplecze → Wysypisko.
+
 ## Known limitations
 
 - The forum is served over HTTP, so traffic, including login and the session, is not encrypted.

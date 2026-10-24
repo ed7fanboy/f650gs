@@ -51,7 +51,7 @@ import pl.f650gs.forum.MainActivity.Companion.WEB_ACTION_REQUEST
 
 /** A member's profile page itself (not its sub-pages such as edit or content). */
 internal fun MainActivity.isProfileUrl(url: String): Boolean {
-    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    val uri = runCatching { java.net.URI(ForumParser.withoutWarnReference(url)) }.getOrNull() ?: return false
     val host = uri.host?.lowercase().orEmpty()
     return (host == "f650gs.pl" || host.endsWith(".f650gs.pl")) && uri.rawQuery == null &&
         Regex("""/profile/\d+-[^/]*/?""").matches(uri.rawPath.orEmpty())
