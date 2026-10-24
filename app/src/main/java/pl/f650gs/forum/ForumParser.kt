@@ -155,10 +155,19 @@ object ForumParser {
                     else -> "https://${if (host == "youtu.be") "youtu.be" else host}${path}" +
                         (resolved.rawQuery?.let { "?$it" } ?: "")
                 }
+                val id = Regex("""(?:[?&]v=|youtu\.be/|/embed/|/shorts/|/live/)([A-Za-z0-9_-]{11})""").find(videoUrl + " " + resolved)?.groupValues?.get(1)
                 val link = Element(org.jsoup.parser.Tag.valueOf("a"), body.baseUri())
                     .attr("href", videoUrl)
                     .addClass("forumYoutubeLink")
-                    .text("▶ Otwórz film na YouTube")
+                // A card with the film's thumbnail and title (the forum keeps it in the iframe, or the page fetches it).
+                if (id != null) {
+                    link.attr("data-yt", id)
+                    link.appendElement("span").addClass("forumYoutubeThumb").apply {
+                        appendElement("img").attr("src", "https://i.ytimg.com/vi/$id/hqdefault.jpg").attr("alt", "").attr("data-ytthumb", "")
+                        appendElement("b").text("▶")
+                    }
+                }
+                link.appendElement("span").addClass("forumYoutubeTitle").text(iframe.attr("title").trim().ifBlank { "Otwórz film na YouTube" })
                 iframe.replaceWith(link)
             } else {
                 iframe.remove()
@@ -712,7 +721,7 @@ object ForumParser {
 
     /** Pictures in a post's HTML: forum emoticons, Tapatalk emoji and images inside quotes of other posts don't count. */
     fun imageCount(html: String): Int = Jsoup.parseBodyFragment(html)
-        .select("img:not([data-emoticon]):not([src*=/emoticons/]):not([src*=tapatalk-cdn.com/emoji])")
+        .select("img:not([data-emoticon]):not([data-ytthumb]):not([src*=/emoticons/]):not([src*=tapatalk-cdn.com/emoji])")
         .count { image -> image.parents().none { it.normalName() == "blockquote" } }
 
     /** Keeps the app on the forum: any other host becomes the forum's front page; always plain HTTP. */

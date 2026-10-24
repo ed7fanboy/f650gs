@@ -85,6 +85,7 @@
 - Mentions: Tapatalk's `[mention]` tags show as links to the member's profile; typing `@` and three letters suggests members, people in the topic first, and sends a forum mention that notifies them.
 - Unsent text is kept per topic, conversation and Chatbox, also after the app is closed (photos, films and mentions included).
 - Back and tab switches open the screen at the top instead of at the previous screen's scroll position.
+- 0.19.1: YouTube films in posts show as a card with the thumbnail and title (from the forum, else YouTube); "Pełny ekran" above the reply box while typing hides the posts and gives the whole screen to the text (Zwiń or Back returns).
 
 ## Known limitations
 

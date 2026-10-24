@@ -62,8 +62,47 @@ internal fun MainActivity.buildChatComposer(): LinearLayout = LinearLayout(this)
         visibility = View.GONE
         setOnClickListener { setQuote(null) }
     }
-    addView(quoteChip, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(6) })
+    // Above the box while typing or quoting: the quote chip and the switch to a full-screen box.
+    expandButton = label("⤢  Pełny ekran", 12f, LINK, bold = true).apply {
+        setPadding(dp(12), dp(6), dp(12), dp(6))
+        background = rounded(TEAL_LIGHT, 14)
+        setOnClickListener { setComposerFull(!composerFull) }
+    }
+    composerHeader = LinearLayout(this@buildChatComposer).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        visibility = View.GONE
+        addView(quoteChip, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+        addView(expandButton, LinearLayout.LayoutParams(-2, -2))
+    }
+    addView(composerHeader, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
     addView(composerRow(), LinearLayout.LayoutParams(-1, -2))
+}
+
+/** Shows the row above the box when it has something to offer. */
+internal fun MainActivity.updateComposerHeader() {
+    val replying = currentScreen is Screen.Topic || currentScreen is Screen.Conversation
+    expandButton.visibility = if (replying) View.VISIBLE else View.GONE
+    expandButton.text = if (composerFull) "⤡  Zwiń" else "⤢  Pełny ekran"
+    quoteChip.layoutParams = LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) }
+    composerHeader.visibility =
+        if (quoteChip.visibility == View.VISIBLE || composerFull || (keyboardUp && replying)) View.VISIBLE else View.GONE
+}
+
+/** The box over the whole screen (the posts hidden), for writing longer posts; or back to its normal size. */
+internal fun MainActivity.setComposerFull(full: Boolean) {
+    if (full == composerFull) return
+    composerFull = full
+    (scroll.parent as View).visibility = if (full) View.GONE else View.VISIBLE
+    chatComposer.layoutParams = LinearLayout.LayoutParams(-1, if (full) 0 else -2, if (full) 1f else 0f)
+    val row = chatInput.parent as LinearLayout
+    row.layoutParams = LinearLayout.LayoutParams(-1, if (full) 0 else -2, if (full) 1f else 0f)
+    row.gravity = if (full) Gravity.TOP else Gravity.CENTER_VERTICAL
+    chatInput.layoutParams = LinearLayout.LayoutParams(0, if (full) -1 else -2, 1f)
+    chatInput.maxLines = if (full) Int.MAX_VALUE else 4
+    chatInput.gravity = (if (full) Gravity.TOP else Gravity.CENTER_VERTICAL) or Gravity.START
+    updateComposerHeader()
+    if (full) chatInput.requestFocus()
 }
 
 internal fun MainActivity.setQuote(post: ForumPost?) {
@@ -72,6 +111,7 @@ internal fun MainActivity.setQuote(post: ForumPost?) {
     quotedPost = post
     quoteChip.text = post?.let { "❝  Cytujesz: ${it.author}   ✕" }.orEmpty()
     quoteChip.visibility = if (post == null) View.GONE else View.VISIBLE
+    updateComposerHeader()
     if (post != null) {
         chatInput.requestFocus()
         (getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)?.showSoftInput(chatInput, 0)
@@ -228,6 +268,7 @@ internal fun MainActivity.sendChat() {
             endSending()
             result.onSuccess { batch ->
                 chatInput.setText("")
+                setComposerFull(false)
                 appendChat(batch)
                 scrollChatToEnd()
             }.onFailure {
@@ -384,6 +425,7 @@ internal fun MainActivity.sendPrivateMessage() {
             endSending()
             result.onSuccess { updated ->
                 chatInput.setText("")
+                setComposerFull(false)
                 if (currentScreen is Screen.Conversation) renderConversation(updated)
             }.onFailure {
                 android.widget.Toast.makeText(this, it.localizedMessage ?: "Nie udało się wysłać wiadomości.", android.widget.Toast.LENGTH_LONG).show()

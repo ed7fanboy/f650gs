@@ -127,6 +127,10 @@ class MainActivity : Activity() {
     internal lateinit var bottomButton: TextView
     internal lateinit var newTopicButton: TextView
     internal lateinit var quoteChip: TextView
+    internal lateinit var composerHeader: LinearLayout
+    internal lateinit var expandButton: TextView
+    internal var composerFull = false
+    internal var keyboardUp = false
     internal var quotedPost: ForumPost? = null
     internal var editing: EditForm? = null
     // Quotes of the edited post, kept as they are before the text (photos are edited in place).
@@ -279,7 +283,7 @@ class MainActivity : Activity() {
         if (savedInstanceState == null) handleTabIntent(intent)
         ForumCheckJob.sync(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val callback = OnBackInvokedCallback { goBack() }
+            val callback = OnBackInvokedCallback { if (composerFull) setComposerFull(false) else goBack() }
             onBackInvokedDispatcher.registerOnBackInvokedCallback(
                 android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
                 callback,
@@ -368,6 +372,8 @@ class MainActivity : Activity() {
 
     /** The tab bar only takes room from the text while the keyboard is open. */
     private fun keyboardShown(typing: Boolean) {
+        keyboardUp = typing
+        updateComposerHeader()
         bottomNavScroll.visibility = if (typing) View.GONE else View.VISIBLE
         bottomButton.visibility = if (!typing && currentScreen is Screen.Topic) View.VISIBLE else View.GONE
         if (typing && (currentScreen == Screen.Chatbox || currentScreen is Screen.Conversation)) scrollChatToEnd()
@@ -720,6 +726,7 @@ class MainActivity : Activity() {
             if (android.os.Build.VERSION.SDK_INT >= 26) scroll.defaultFocusHighlightEnabled = false
             scroll.requestFocus()
             scroll.scrollTo(0, 0)
+            setComposerFull(false)
             switchDraft(renderedScreen?.let(::draftKey), draftKey(currentScreen))
             renderedScreen = currentScreen
         }
@@ -978,6 +985,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Android; retained for API 24 back navigation")
     override fun onBackPressed() {
+        if (composerFull) return setComposerFull(false)
         goBack()
     }
 

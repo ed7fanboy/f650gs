@@ -95,6 +95,7 @@ internal fun MainActivity.sendTopicReply() {
             endSending()
             result.onSuccess {
                 chatInput.setText("")
+                setComposerFull(false)
                 setQuote(null)
                 hideKeyboard(chatInput)
                 // `getLastComment` lands on the newest post, i.e. the reply just sent.
@@ -171,6 +172,7 @@ internal fun MainActivity.sendEdit(form: EditForm) {
             result.onSuccess {
                 setQuote(null)
                 chatInput.setText("")
+                setComposerFull(false)
                 hideKeyboard(chatInput)
                 android.widget.Toast.makeText(this, "Post zaktualizowany", android.widget.Toast.LENGTH_SHORT).show()
                 topicPage?.let { page -> openTopicPage("${page.url.substringBefore('?')}?do=findComment&comment=$postId") }
@@ -287,6 +289,14 @@ internal fun MainActivity.topicPostsView(
         append(";color:").append(if (darkMode) "#c7e6fb" else "#005a9c")
         append("!important;font-weight:800;text-decoration:none!important;border:1px solid ")
         append(if (darkMode) "#42647a" else "#a8cce5").append("}")
+        // A film with its thumbnail: a full-width card, the picture 16:9 with a play mark, the title under it.
+        append(".forumYoutubeLink[data-yt]{display:block;padding:0;overflow:hidden}")
+        append(".forumYoutubeThumb{position:relative;display:block;aspect-ratio:16/9;background:#000}")
+        append(".postBody .forumYoutubeThumb img{display:block;width:100%;height:100%;max-height:none;object-fit:cover;margin:0;border-radius:0}")
+        append(".forumYoutubeThumb b{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:60px;height:42px;line-height:42px;border-radius:12px;background:rgba(220,0,0,.88);font-size:0}")
+        // A drawn triangle: the "▶" character turns into a coloured emoji on Android.
+        append(".forumYoutubeThumb b::after{content:'';position:absolute;left:24px;top:12px;border-style:solid;border-width:9px 0 9px 15px;border-color:transparent transparent transparent #fff}")
+        append(".forumYoutubeTitle{display:block;padding:10px 14px}")
         append("blockquote.ipsQuote,blockquote:not(.ipsQuote){margin:12px 0;padding:10px 12px;background:")
         append(if (darkMode) "#26383b" else "#eaf3fb")
         append(";border-left:4px solid ").append(if (darkMode) "#8abbb5" else "#367eae")
@@ -353,7 +363,7 @@ internal fun MainActivity.topicPostsView(
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                view.evaluateJavascript("(function(){var report=function(){NativePosts.update(Math.max(document.body.scrollHeight,document.documentElement.scrollHeight))};document.querySelectorAll('.postBody img').forEach(function(i){var url=i.currentSrc||i.src;var fallback=function(){if(!i.parentNode)return;var link=document.createElement('a');link.className='forumImageFallback';link.href='#';link.textContent='Otwórz zdjęcie';link.onclick=function(e){e.preventDefault();NativePosts.openImage(url);return false};i.parentNode.replaceChild(link,i);report()};i.addEventListener('load',function(){if(i.naturalWidth>0&&i.naturalWidth<200)i.classList.add('small');report()});i.addEventListener('error',fallback);if(i.complete&&i.naturalWidth===0)fallback();i.onclick=function(){var body=i.closest('.postBody');var all=Array.prototype.filter.call(body?body.querySelectorAll('img'):[i],function(x){return !x.hasAttribute('data-emoticon')&&!/\\/emoticons\\/|tapatalk-cdn\\.com\\/emoji/.test(x.src)&&!x.classList.contains('small')&&x.naturalWidth!==0}).map(function(x){return x.currentSrc||x.src});if(all.indexOf(url)<0)all=[url];NativePosts.openGallery(JSON.stringify(all),all.indexOf(url));return false}});if(window.ResizeObserver)new ResizeObserver(report).observe(document.body);report();" +
+                view.evaluateJavascript("(function(){var report=function(){NativePosts.update(Math.max(document.body.scrollHeight,document.documentElement.scrollHeight))};document.querySelectorAll('a.forumYoutubeLink[data-yt]').forEach(function(a){var title=a.querySelector('.forumYoutubeTitle');var thumb=a.querySelector('img');if(thumb)thumb.addEventListener('error',function(){thumb.parentNode.style.display='none';report()});if(!title||title.textContent!=='Otwórz film na YouTube')return;fetch('https://www.youtube.com/oembed?format=json&url='+encodeURIComponent('https://www.youtube.com/watch?v='+a.getAttribute('data-yt'))).then(function(r){return r.json()}).then(function(j){if(j&&j.title){title.textContent=j.title;report()}}).catch(function(){})});document.querySelectorAll('.postBody img:not([data-ytthumb])').forEach(function(i){var url=i.currentSrc||i.src;var fallback=function(){if(!i.parentNode)return;var link=document.createElement('a');link.className='forumImageFallback';link.href='#';link.textContent='Otwórz zdjęcie';link.onclick=function(e){e.preventDefault();NativePosts.openImage(url);return false};i.parentNode.replaceChild(link,i);report()};i.addEventListener('load',function(){if(i.naturalWidth>0&&i.naturalWidth<200)i.classList.add('small');report()});i.addEventListener('error',fallback);if(i.complete&&i.naturalWidth===0)fallback();i.onclick=function(){var body=i.closest('.postBody');var all=Array.prototype.filter.call(body?body.querySelectorAll('img:not([data-ytthumb])'):[i],function(x){return !x.hasAttribute('data-emoticon')&&!/\\/emoticons\\/|tapatalk-cdn\\.com\\/emoji/.test(x.src)&&!x.classList.contains('small')&&x.naturalWidth!==0}).map(function(x){return x.currentSrc||x.src});if(all.indexOf(url)<0)all=[url];NativePosts.openGallery(JSON.stringify(all),all.indexOf(url));return false}});if(window.ResizeObserver)new ResizeObserver(report).observe(document.body);report();" +
                     focusScript(focusPostId) + "})()", null)
             }
         }

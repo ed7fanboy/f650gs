@@ -216,6 +216,22 @@ class ForumParserTest {
         assertTrue(html.contains("src=\"http://f650gs.pl/uploads/a.jpg\""))
     }
 
+    @Test fun youtubeEmbedsBecomeThumbnailCards() {
+        val body = Jsoup.parse(
+            "<div id=b><div class='ipsEmbeddedVideo'><div><iframe src='https://www.youtube.com/embed/abc_DEF-123?feature=oembed' title='Jazda &amp; kurz'></iframe></div></div>" +
+                "<iframe src='https://www.youtube.com/embed/xyz_UVW-456'></iframe></div>",
+            "http://f650gs.pl/topic/1-x/",
+        ).getElementById("b")!!
+        val cards = Jsoup.parseBodyFragment(ForumParser.safePostHtml(body)).select("a.forumYoutubeLink")
+        assertEquals(2, cards.size)
+        assertEquals("https://www.youtube.com/watch?v=abc_DEF-123", cards[0].attr("href"))
+        assertEquals("https://i.ytimg.com/vi/abc_DEF-123/hqdefault.jpg", cards[0].selectFirst("img[data-ytthumb]")!!.attr("src"))
+        assertEquals("Jazda & kurz", cards[0].selectFirst(".forumYoutubeTitle")!!.text())
+        // No title in the iframe: a placeholder the page replaces with the film's title.
+        assertEquals("Otwórz film na YouTube", cards[1].selectFirst(".forumYoutubeTitle")!!.text())
+        assertEquals(0, ForumParser.imageCount(cards.outerHtml()))
+    }
+
     @Test fun urlsStayOnTheForum() {
         assertEquals("http://f650gs.pl/topic/1-x/", ForumParser.safeForumUrl("/topic/1-x/"))
         assertEquals("http://f650gs.pl/a?b=1#c", ForumParser.safeForumUrl("https://f650gs.pl/a?b=1#c"))

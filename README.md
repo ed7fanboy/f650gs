@@ -15,6 +15,7 @@ A lightweight native reader for [http://f650gs.pl/](http://f650gs.pl/). The app 
 - Red count badges: unread conversations on Wiadomości, unread topics on Nieprzecz., forum notifications on the bell (header counters from `/discover/unread/`); a red dot on Chatbox when someone else wrote after the newest message seen in the app (checked with the counters, at most once a minute).
 - Pasting into a post or message: an address that is only an image (jpg, png, gif, webp, avif) becomes a photo, a YouTube link an embedded film in the forum's own `ipsEmbeddedVideo` markup (480 x 270); any other text pastes as is.
 - Mentions (`Mentions.kt`): Tapatalk's `[mention=ID]Name[/mention]` and `[mention]Name[/mention]` in posts become profile links (the name-only form is looked up with the forum's member search on tap); in the composer, `@` plus three letters lists members (people in the open topic first, then names starting with the letters) and the pick is sent as the forum editor's mention link (`data-mentionid`), which notifies the member.
+- Full-screen reply box: while typing in a topic or conversation, "⤢ Pełny ekran" above the box hides the posts and stretches the box over the screen; "Zwiń", Back, sending or leaving the screen bring it back.
 - Drafts (`Drafts.kt`): unsent composer text per topic, conversation and Chatbox, saved on leaving the screen or the app; photos and films are kept as their post HTML, mentions as member id and name.
 - Native notifications (bell, signed in only): the forum's notification list with older pages, entries open the topic natively; native notification settings built from the forum's own form (switches save on their own).
 - Other forum pages (account settings, e-mail/password/username change, ignored members, password reset, …) are drawn natively from their notes, lists and IPS forms by `FormPages.kt` (`ForumParser.nativePage`); pages with the post editor, uploads or unknown fields fall back to the WebView.
@@ -52,7 +53,7 @@ A lightweight native reader for [http://f650gs.pl/](http://f650gs.pl/). The app 
 - Saves topic links locally on the device.
 - Offers persistent System, Light, and Dark appearance choices.
 - Uses BMW blue for the light-theme accent and carries dark colors through forum forms and rich-text editor frames.
-- Preserves YouTube embeds in posts as a clearly styled link that opens the video externally, without loading third-party iframe content in the reader.
+- YouTube embeds in posts become a card with the film's thumbnail (`i.ytimg.com`) and title (from the forum's iframe, else YouTube's oEmbed, fetched by the post page) that opens the video externally; no third-party iframe is loaded in the reader.
 - Signs in through the forum's own login page in a focused in-app WebView.
 - Opens the forum's own reply editor when a topic offers no native reply form (e.g. locked).
 - Shares the WebView's forum session with the native read-only screens.
