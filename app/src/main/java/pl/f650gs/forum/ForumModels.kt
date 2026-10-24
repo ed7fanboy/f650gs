@@ -87,13 +87,15 @@ data class ForumPost(
     val likedByMe: Boolean = false,
     val likeUrl: String = "",
     val unlikeUrl: String = "",
-    val likedBy: String = "",
     val photo: String = "",
     val editUrl: String = "",
     val authorUrl: String = "",
     /** What a moderator may do with this post in a multi-post action ("merge", "delete", "hide"…); empty for members. */
     val modActions: List<String> = emptyList(),
 )
+
+/** One member who reacted to a post, from the forum's "who reacted" list; [reaction] is the reaction's image name ("like", "thanks"…). */
+data class Liker(val name: String, val profileUrl: String, val photo: String, val reaction: String, val date: String)
 
 /** An edit form for an existing post; [originalHtml] is what the editor would start with. */
 data class EditForm(val form: ReplyForm, val originalHtml: String)

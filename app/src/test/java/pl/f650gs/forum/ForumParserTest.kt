@@ -56,6 +56,22 @@ class ForumParserTest {
         assertNull(form.hidden["pollField"])
     }
 
+    @Test fun likersListWithReactionsAndNextPage() {
+        val html = """<ol class="ipsGrid" data-role="tableRows">
+            <li class="ipsPhotoPanel"><a href="http://f650gs.pl/profile/901-czlonek-901/?wr=x" class="ipsUserPhoto"><img src="http://f650gs.pl/uploads/p901.png" alt="Członek 1"></a>
+              <div><h3>Członek 1</h3><span class="ipsType_light"><img src="http://f650gs.pl/uploads/reactions/react_like.png"> <span><time datetime="2026-10-23T12:51:57Z">piątek o 14:51</time></span></span>
+              <a href="http://f650gs.pl/topic/1-t/?do=unreactComment&amp;comment=5&amp;member=901"><i></i></a></div></li>
+            <li class="ipsPhotoPanel"><a href="http://f650gs.pl/profile/902-czlonek-902/" class="ipsUserPhoto"><img src="http://f650gs.pl/uploads/p902.png" alt="Członek 2"></a>
+              <div><h3>Członek 2</h3><span class="ipsType_light"><img src="http://f650gs.pl/uploads/reactions/react_thanks.png"> <span><time>wczoraj</time></span></span></div></li>
+            </ol><ul class="ipsPagination"><li class="ipsPagination_next"><a href="http://f650gs.pl/topic/1-t/?do=showReactionsComment&amp;comment=5&amp;page=2">Dalej</a></li></ul>"""
+        val (likers, next) = ForumParser.likers(org.jsoup.Jsoup.parse(html, "http://f650gs.pl/"))
+        assertEquals(listOf("Członek 1", "Członek 2"), likers.map { it.name })
+        assertEquals(listOf("like", "thanks"), likers.map { it.reaction })
+        assertEquals("http://f650gs.pl/profile/901-czlonek-901/", likers[0].profileUrl)
+        assertEquals("piątek o 14:51", likers[0].date)
+        assertEquals("http://f650gs.pl/topic/1-t/?do=showReactionsComment&comment=5&page=2", next)
+    }
+
     @Test fun topicModerationMenuAndMoveForm() {
         val menu = """<ul id="elTopicActions_menu">
             <li><a href="http://f650gs.pl/topic/1-t/?csrfKey=k&amp;do=moderate&amp;action=unfeature">Przestań promować</a></li>

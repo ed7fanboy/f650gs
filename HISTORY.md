@@ -92,6 +92,7 @@
 - Staff view: member links in topics open the native profile for administrators and moderators too (the forum adds a `wr=` parameter to them for staff).
 - Moderating posts: a checkbox on each post the account may moderate; with posts ticked, a bar offers the actions all of them allow (Połącz, Ukryj/Odkryj, Usuń, Zatwierdź), with a confirmation before deleting or merging. Splitting stays on the forum page.
 - Moderating topics: "Moderuj temat…" under the title lists the forum's own staff menu with icons (Promuj, Podepnij, Ukryj, Zamknij, Przenieś, Połącz, Usuń, and their undo forms on a promoted, pinned, hidden or closed topic), plus "Na wysypisko", a one-tap move to Zaplecze → Wysypisko.
+- 0.20.1: likes as one split pill under each post, `[👍 │ N]`: the thumb likes or unlikes, the count opens the full list of who reacted (avatar, reaction, time; tap opens the profile), read from the forum's `?do=showReactionsComment` page. Replaces the names line that squeezed the buttons.
 
 ## Known limitations
 

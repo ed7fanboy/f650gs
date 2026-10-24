@@ -551,14 +551,15 @@ internal fun MainActivity.topicPostsView(
         append(".modBox{flex:none;width:22px;height:22px;margin:0 0 0 4px;accent-color:").append(if (darkMode) "#2f5a78" else "#0066b1").append("}")
         append(".avatar{position:relative;flex:none;width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;overflow:hidden}")
         append(".avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;max-height:none!important;border-radius:0!important}")
-        append(".postFooter{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:9px;border-top:1px solid ")
+        append(".postFooter{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding-top:9px;border-top:1px solid ")
         append(if (darkMode) "#36484b" else "#dbe4e8")
-        append("}.likeButton{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:18px;border:1px solid ")
+        append("}.likeButton{display:inline-flex;flex:none;white-space:nowrap;align-items:center;gap:6px;padding:7px 11px;border-radius:18px;border:1px solid ")
         append(if (darkMode) "#42647a" else "#a8cce5")
         append(";background:transparent;color:").append(if (darkMode) "#c7e6fb" else "#005a9c")
         append(";font:700 13px sans-serif}.likeButton.liked{background:").append(if (darkMode) "#2f5a78" else "#0066b1")
-        append(";border-color:transparent;color:#fff}.likeButton:disabled{opacity:.55}.likedBy{flex:1;min-width:0;font-size:12px;color:")
-        append(if (darkMode) "#b9c8c9" else "#586c71").append("}")
+        append(";border-color:transparent;color:#fff}.likeButton:disabled{opacity:.55}.likeCount{font-weight:600;min-width:34px;justify-content:center}.likeCount[hidden]{display:none}.postActions{display:flex;gap:8px;margin-left:auto}")
+        append(".likePill{display:inline-flex;flex:none;border-radius:18px;overflow:hidden;border:1px solid ").append(if (darkMode) "#42647a" else "#a8cce5")
+        append("}.likePill .likeButton{border:0;border-radius:0}.likePill .likeCount{border-left:1px solid ").append(if (darkMode) "#42647a" else "#a8cce5").append("}")
         append("</style></head><body>")
         posts.forEachIndexed { index, post ->
             append("<article class=\"post\" id=\"c").append(post.id).append("\"><header class=\"postHeader\">")
@@ -628,28 +629,78 @@ internal fun MainActivity.postAvatarHtml(post: ForumPost): String {
 internal fun MainActivity.likeFooterHtml(index: Int, post: ForumPost, canQuote: Boolean): String {
     val canReact = signedIn && post.likeUrl.isNotBlank()
     if (!canReact && post.likeCount == 0 && !canQuote && post.editUrl.isBlank()) return ""
-    val escape = android.text.Html::escapeHtml
     return buildString {
         append("<footer class=\"postFooter\">")
+        // One split pill: the thumb likes, the count opens the list of who reacted.
+        append("<span class=\"likePill\">")
         if (canReact) {
             append("<button class=\"likeButton").append(if (post.likedByMe) " liked" else "")
             append("\" id=\"like").append(index).append("\" onclick=\"this.disabled=true;NativePosts.toggleLike(").append(index).append(")\">")
         } else {
             append("<span class=\"likeButton\">")
         }
-        append("👍 <span class=\"likeLabel\">").append(likeLabel(post)).append("</span>")
-        append(if (canReact) "</button>" else "</span>")
-        append("<span class=\"likedBy\" id=\"likedBy").append(index).append("\">").append(escape(post.likedBy)).append("</span>")
+        append("👍").append(if (canReact) "</button>" else "</span>")
+        append("<button class=\"likeButton likeCount\" id=\"likes").append(index).append("\" onclick=\"NativePosts.likers(").append(index).append(")\"")
+        append(if (post.likeCount == 0) " hidden>" else ">").append(likeLabel(post)).append("</button></span>")
+        // Together, so on a narrow screen both move to a second line on the right.
+        append("<span class=\"postActions\">")
         if (canQuote) append("<button class=\"likeButton\" onclick=\"NativePosts.quote(").append(index).append(")\">❝ Cytuj</button>")
         if (canQuote && post.editUrl.isNotBlank()) append("<button class=\"likeButton\" onclick=\"NativePosts.edit(").append(index).append(")\">✎ Edytuj</button>")
+        append("</span>")
         append("</footer>")
     }
 }
 
-internal fun MainActivity.likeLabel(post: ForumPost): String = when {
-    post.likedByMe -> "Lubisz to · ${post.likeCount}"
-    post.likeCount > 0 -> "Lubię to · ${post.likeCount}"
-    else -> "Lubię to"
+internal fun likeLabel(post: ForumPost): String = post.likeCount.toString()
+
+/** Who reacted to [post]: a dialog that fills in once the forum's list has loaded; tapping a member opens their profile. */
+internal fun MainActivity.showLikers(page: TopicPage, post: ForumPost) {
+    val list = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(20), dp(4), dp(20), dp(8))
+        addView(label("Ładuję…", 14f, MUTED).apply { setPadding(0, dp(10), 0, dp(10)) })
+    }
+    val dialog = AlertDialog.Builder(this)
+        .setTitle("Like: ${post.likeCount}")
+        .setView(android.widget.ScrollView(this).apply { addView(list) })
+        .setNegativeButton("Zamknij", null)
+        .show()
+    repository.updateSessionCookies(CookieManager.getInstance().getCookie("http://f650gs.pl/"))
+    io.execute {
+        val result = runCatching { repository.likers(page.url, post.id) }
+        main.post {
+            if (!dialog.isShowing) return@post
+            list.removeAllViews()
+            val likers = result.getOrElse {
+                list.addView(label(it.localizedMessage ?: "Nie udało się pobrać listy.", 14f, MUTED).apply { setPadding(0, dp(10), 0, dp(10)) })
+                return@post
+            }
+            if (likers.isEmpty()) list.addView(label("Nikt jeszcze nie polubił.", 14f, MUTED).apply { setPadding(0, dp(10), 0, dp(10)) })
+            dialog.setTitle("Like: ${likers.size}")
+            likers.forEach { liker ->
+                list.addView(row {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(8), 0, dp(8))
+                    addView(initialBadge(liker.name, liker.photo), LinearLayout.LayoutParams(dp(34), dp(34)))
+                    addView(label(liker.name, 15f, INK, bold = true), LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
+                    addView(label(listOf(reactionEmoji(liker.reaction), liker.date).filter { it.isNotBlank() }.joinToString("  "), 12f, MUTED))
+                    if (liker.profileUrl.isNotBlank()) setOnClickListener {
+                        dialog.dismiss()
+                        navigate(Screen.Profile(liker.name, liker.profileUrl))
+                    }
+                })
+            }
+        }
+    }
+}
+
+private fun reactionEmoji(reaction: String): String = when (reaction) {
+    "like" -> "👍"
+    "thanks" -> "🙏"
+    "haha" -> "😂"
+    "confused" -> "😕"
+    "sad" -> "😢"
+    else -> ""
 }
 
 internal fun MainActivity.focusScript(focusPostId: Long): String {

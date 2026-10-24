@@ -322,6 +322,19 @@ class ForumRepository {
             "<div class=\"ipsQuote_contents\">$contents</div></blockquote>"
     }
 
+    /** Everyone who reacted to post [postId] of the topic at [topicUrl] (at most 10 pages of the list). */
+    fun likers(topicUrl: String, postId: Long): List<Liker> {
+        val likers = mutableListOf<Liker>()
+        var url = safeForumUrl(topicUrl).substringBefore('#').substringBefore('?') + "?do=showReactionsComment&comment=$postId"
+        repeat(10) {
+            val (found, next) = ForumParser.likers(ajax(url).get())
+            likers += found
+            if (next.isBlank() || next == url) return likers
+            url = next
+        }
+        return likers
+    }
+
     /** Sends a reaction (or its removal) the same way the forum's own JavaScript does. */
     fun react(actionUrl: String) {
         require(actionUrl.contains("do=reactComment") || actionUrl.contains("do=unreactComment")) { "Nieprawidłowa akcja polubienia." }

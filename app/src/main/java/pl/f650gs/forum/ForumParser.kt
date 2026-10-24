@@ -220,6 +220,23 @@ object ForumParser {
         return body.html()
     }
 
+    /** The members on one page of a post's "who reacted" list (`?do=showReactionsComment`), and the next page's address. */
+    fun likers(document: Document): Pair<List<Liker>, String> {
+        val likers = document.select("ol[data-role=tableRows] > li").mapNotNull { row ->
+            val name = row.selectFirst("h3")?.text().clean().ifBlank { return@mapNotNull null }
+            Liker(
+                name = name,
+                profileUrl = profileLink(row.selectFirst("a.ipsUserPhoto, a[href*=/profile/]")),
+                photo = photoUrl(row.selectFirst("a.ipsUserPhoto img")),
+                reaction = row.selectFirst(".ipsType_light img")?.attr("src").orEmpty()
+                    .substringAfterLast('/').removePrefix("react_").substringBefore('.'),
+                date = row.selectFirst("time")?.text().clean(),
+            )
+        }
+        val next = document.selectFirst(".ipsPagination_next:not(.ipsPagination_inactive) a")?.absUrl("href")?.let(::safeForumUrl).orEmpty()
+        return likers to next
+    }
+
     /** A topic page; [focus] is the post the address pointed at (`#comment-ID`), 0 for none. */
     fun topic(document: Document, url: String, focus: Long = 0): TopicPage {
         val posts = document.select("article.ipsComment").mapNotNull { article ->
@@ -241,8 +258,6 @@ object ForumParser {
                 photo = photoUrl(article.selectFirst(".cAuthorPane_photo img, .ipsComment_author img")),
                 editUrl = article.selectFirst("a[href*=do=editComment]")?.absUrl("href")?.let(::safeForumUrl).orEmpty(),
                 authorUrl = profileLink(article.selectFirst(".cAuthorPane_author a[href*=/profile/], .ipsComment_author a[href*=/profile/]")),
-                likedBy = reactions?.selectFirst(".ipsReact_overview")?.text().clean()
-                    .replace(" reacted to this", " lubi to").replace(Regex("^You\\b"), "Ty").replace(" others", " innych"),
                 modActions = article.selectFirst("input[data-role=moderation]")?.let { box ->
                     // A hidden post offers "hide" in its list, which the forum's own menu turns into "unhide".
                     box.attr("data-actions").split(' ').filter { it.isNotBlank() }

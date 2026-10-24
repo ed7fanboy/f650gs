@@ -890,6 +890,14 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun likers(index: Int) {
+            main.post {
+                val page = topicPage ?: return@post
+                posts.getOrNull(index)?.let { showLikers(page, it) }
+            }
+        }
+
+        @JavascriptInterface
         fun toggleLike(index: Int) {
             main.post {
                 val post = posts.getOrNull(index) ?: return@post
@@ -906,7 +914,8 @@ class MainActivity : Activity() {
                         val label = JSONObject.quote(likeLabel(updated))
                         webView.evaluateJavascript(
                             "(function(){var b=document.getElementById('like$index');if(!b)return;b.disabled=false;" +
-                                "b.classList.toggle('liked',${updated.likedByMe});b.querySelector('.likeLabel').textContent=$label})()",
+                                "b.classList.toggle('liked',${updated.likedByMe});var c=document.getElementById('likes$index');" +
+                                "if(c){c.textContent=$label;c.hidden=${updated.likeCount == 0}}})()",
                             null,
                         )
                         result.onFailure {
