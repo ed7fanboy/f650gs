@@ -50,9 +50,8 @@ import pl.f650gs.forum.MainActivity.Companion.THEME_KEY
 import pl.f650gs.forum.MainActivity.Companion.WEB_ACTION_REQUEST
 
 internal fun MainActivity.renderHome(items: List<ActivityStory>) {
-    // One card per topic, in order of its latest activity. The card shows the topic's earliest
-    // entry in the stream (the first one you have not seen, as far as the stream tells), with
-    // the later ones summarised; tapping opens the forum's first unread post.
+    // One card per topic, in order of its latest activity. The card shows the first post you have
+    // not read, or the latest one when all are read, with the newer ones summarised; tapping opens it.
     val topics = items.groupBy { topicPath(it.url) }.values
     content.removeAllViews()
     content.addView(hero("Ostatnie z forum", "Wątki i odpowiedzi od społeczności F650GS"))
@@ -60,9 +59,10 @@ internal fun MainActivity.renderHome(items: List<ActivityStory>) {
     if (items.isEmpty()) content.addView(emptyCard("Brak nowych wpisów", "Wróć później albo przejrzyj działy forum."))
     val me = accountName()
     topics.forEach { stories ->
-        // Your own entries are not news to you: preview the earliest one by someone else.
-        val shown = stories.lastOrNull { me.isBlank() || !it.author.equals(me, ignoreCase = true) } ?: stories.last()
-        content.addView(activityCard(shown, stories - shown, firstUnreadUrl(stories.first().url), othersAreNewer = true))
+        // Your own entries are not news to you, so the preview is someone else's.
+        val (shown, newer) = homePreview(stories, me)
+        // An unread one goes through the forum's own first-unread jump, which also covers posts older than the stream.
+        content.addView(activityCard(shown, newer, if (shown.unread) firstUnreadUrl(shown.url) else shown.url, othersAreNewer = true))
     }
     content.addView(openSiteButton("Otwórz pełne forum") { openBrowser("http://f650gs.pl/") })
 }
@@ -120,6 +120,8 @@ internal fun MainActivity.renderNewTopic(screen: Screen.NewTopic) {
     card.addView(label(screen.forum, 16f, INK, bold = true), margin(top = 6))
     val title = formField("Tytuł tematu", 1)
     val body = formField("Treść pierwszego wpisu", 8)
+    embedPastedLinks(body)
+    mentionSuggestions(body)
     card.addView(label("TYTUŁ", 11f, LINK, bold = true), margin(top = 16))
     card.addView(title, margin(top = 6))
     card.addView(label("WPIS", 11f, LINK, bold = true), margin(top = 16))

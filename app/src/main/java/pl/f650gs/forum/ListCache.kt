@@ -39,7 +39,7 @@ class ListCache(private val dir: File) {
                 list(stories) {
                     JSONObject().put("title", it.title).put("author", it.author).put("context", it.context)
                         .put("snippet", it.snippet).put("time", it.time).put("replies", it.replies).put("url", it.url)
-                        .put("photo", it.photo).put("authorUrl", it.authorUrl)
+                        .put("photo", it.photo).put("authorUrl", it.authorUrl).put("unread", it.unread)
                 }
             },
             read = { array ->
@@ -47,6 +47,7 @@ class ListCache(private val dir: File) {
                     ActivityStory(
                         it.getString("title"), it.getString("author"), it.getString("context"), it.getString("snippet"),
                         it.getString("time"), it.getString("replies"), it.getString("url"), it.optString("photo"), it.optString("authorUrl"),
+                        it.optBoolean("unread"),
                     )
                 }
             },

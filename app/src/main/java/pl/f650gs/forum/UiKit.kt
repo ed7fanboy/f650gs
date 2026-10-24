@@ -252,16 +252,26 @@ internal fun MainActivity.styleSwitch(switch: android.widget.Switch) {
         intArrayOf(),
     )
     fun faded(color: Int) = Color.argb(110, Color.red(color), Color.green(color), Color.blue(color))
-    val onTrack = if (darkMode) Color.rgb(79, 148, 205) else Color.rgb(0, 102, 177)
-    val offThumb = if (darkMode) Color.rgb(160, 175, 178) else Color.rgb(118, 132, 138)
-    val offTrack = if (darkMode) Color.rgb(98, 116, 120) else Color.rgb(196, 206, 212)
-    switch.thumbTintList = android.content.res.ColorStateList(states, intArrayOf(faded(Color.WHITE), faded(offThumb), Color.WHITE, offThumb))
+    // Dark mode follows Material 3: light track with a dark thumb when on, so on and off differ at a glance
+    // (track vs track, off track vs card and thumb vs track all at least 3:1).
+    val onTrack = if (darkMode) Color.rgb(170, 218, 252) else Color.rgb(0, 102, 177)
+    val onThumb = if (darkMode) Color.rgb(0, 51, 89) else Color.WHITE
+    val offThumb = if (darkMode) Color.rgb(205, 214, 217) else Color.rgb(118, 132, 138)
+    val offTrack = if (darkMode) Color.rgb(104, 120, 125) else Color.rgb(196, 206, 212)
+    switch.thumbTintList = android.content.res.ColorStateList(states, intArrayOf(faded(onThumb), faded(offThumb), onThumb, offThumb))
+    // The platform track is drawn at 30 % alpha, too faint on a dark card: use an opaque one of the same size.
+    if (darkMode) switch.trackDrawable = android.graphics.drawable.GradientDrawable().apply {
+        cornerRadius = dp(7).toFloat()
+        setSize(dp(36), dp(14))
+        setColor(Color.WHITE)
+    }
     switch.trackTintList = android.content.res.ColorStateList(states, intArrayOf(faded(onTrack), faded(offTrack), onTrack, offTrack))
 }
 
-/** Plain-text previews: app footers (when enabled) and Tapatalk emoji placeholders like "[emoji41]". */
+/** Plain-text previews: app footers (when enabled), Tapatalk emoji placeholders like "[emoji41]" and mention tags. */
 internal fun MainActivity.stripSignatureText(text: String): String =
-    (if (hideSignatures) text.replace(SIGNATURE, "") else text).replace(Regex("""\[emoji\d+]"""), "").trim()
+    (if (hideSignatures) text.replace(SIGNATURE, "") else text).replace(Regex("""\[emoji\d+]"""), "")
+        .replace(TAPATALK_MENTION) { "@" + it.groupValues[2] }.trim()
 
 /**
  * Removes app footers from post HTML (when enabled) and the empty paragraphs and line breaks

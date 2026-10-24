@@ -135,6 +135,7 @@ object ForumParser {
     }
 
     fun safePostHtml(body: Element): String {
+        linkTapatalkMentions(body)
         // IPS commonly renders YouTube embeds as iframes. We don't load remote
         // embeds inside the native post reader, but preserve a safe link to the
         // video so the post doesn't appear to have lost it entirely.

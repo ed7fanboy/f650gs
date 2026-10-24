@@ -90,6 +90,10 @@ internal fun MainActivity.composerRow(): LinearLayout = LinearLayout(this).apply
     }
     addView(photoButton, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(8) })
     chatInput = EditText(this@composerRow).apply {
+        embedPastedLinks(this) { currentScreen is Screen.Topic || currentScreen is Screen.Conversation }
+        mentionSuggestions(this, { if (currentScreen is Screen.Topic) topicMembers() else emptyList() }) {
+            currentScreen is Screen.Topic || currentScreen is Screen.Conversation
+        }
         hint = "Napisz wiadomość…"
         textSize = 15f
         setTextColor(INK)
@@ -144,6 +148,7 @@ internal fun MainActivity.loadChat() {
         chatMessages.clear()
         chatMessages.addAll(batch.messages)
         chatLastId = batch.lastId
+        markChatSeen(batch.messages.maxOfOrNull { it.id } ?: 0)
         renderChat()
         main.postDelayed(chatPoll, 10_000)
     }
@@ -176,6 +181,7 @@ internal fun MainActivity.appendChat(batch: ChatBatch) {
     val fresh = batch.messages.filter { message -> chatMessages.none { it.id == message.id } }
     if (batch.lastId > chatLastId) chatLastId = batch.lastId
     if (fresh.isEmpty()) return
+    markChatSeen(fresh.maxOf { it.id })
     val atEnd = scroll.getChildAt(0).bottom - (scroll.height + scroll.scrollY) < dp(80)
     val list = chatList
     fresh.forEach { message ->

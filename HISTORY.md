@@ -76,6 +76,16 @@
 - 0.18.1: no more double posts. Administrators' header notice ("a new IPS Community Suite version is available") was read as a failed send, and a second tap on Wyślij while sending posted again; both are fixed (header notices are ignored everywhere, the send box takes one tap at a time).
 - 0.18.2: icons for the moderator and admin panels; report pages in moderation follow the dark theme; opening the admin panel no longer signs the app out, and a still-valid session is restored on start.
 
+## 0.19 (2026-10-24)
+
+- Chatbox tab shows a red dot when someone else wrote since the last message seen in the app.
+- Dark theme switches: light track with a dark thumb when on, opaque grey when off, so the two states are easy to tell apart.
+- Pasting an image address (jpg, png, gif, webp, avif) or a YouTube link into a post or message inserts it as a photo or an embedded film (480 x 270, like most films on the forum).
+- Ostatnie previews the first post you have not read (the forum's unread stream), or the latest one when all are read, with "+N" counting only the posts after it.
+- Mentions: Tapatalk's `[mention]` tags show as links to the member's profile; typing `@` and three letters suggests members, people in the topic first, and sends a forum mention that notifies them.
+- Unsent text is kept per topic, conversation and Chatbox, also after the app is closed (photos, films and mentions included).
+- Back and tab switches open the screen at the top instead of at the previous screen's scroll position.
+
 ## Known limitations
 
 - The forum is served over HTTP, so traffic, including login and the session, is not encrypted.

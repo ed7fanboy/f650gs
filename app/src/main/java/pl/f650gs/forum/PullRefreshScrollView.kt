@@ -19,6 +19,16 @@ class PullRefreshScrollView(context: Context) : ScrollView(context) {
     private var pulling = false
     private var distance = 0f
 
+
+
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        // On a resize ScrollView scrolls the focused view back into sight. With the focus on the scroll view
+        // itself (where a screen change puts it) that animates to the bottom, e.g. when the composer hides.
+        if (findFocus() === this) return
+        super.onSizeChanged(w, h, oldw, oldh)
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

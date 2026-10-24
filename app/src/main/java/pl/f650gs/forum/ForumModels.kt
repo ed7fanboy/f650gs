@@ -23,7 +23,25 @@ data class ActivityStory(
     val url: String,
     val photo: String = "",
     val authorUrl: String = "",
+    val unread: Boolean = false,
 )
+
+/** [stories] with the posts listed in [unread] (the forum's unread stream) marked as unread. */
+internal fun markUnread(stories: List<ActivityStory>, unread: List<ActivityStory>): List<ActivityStory> {
+    fun key(url: String) = Regex("""[?&]comment=(\d+)""").find(url)?.groupValues?.get(1) ?: url
+    val keys = unread.map { key(it.url) }.toSet()
+    return stories.map { if (key(it.url) in keys) it.copy(unread = true) else it }
+}
+
+/**
+ * Which entry of a topic's [stories] (newest first) a home card previews: the first unread post by
+ * someone else, or else the latest one by someone else; and the entries newer than it.
+ */
+internal fun homePreview(stories: List<ActivityStory>, me: String): Pair<ActivityStory, List<ActivityStory>> {
+    fun mine(story: ActivityStory) = me.isNotBlank() && story.author.equals(me, ignoreCase = true)
+    val shown = stories.lastOrNull { it.unread && !mine(it) } ?: stories.firstOrNull { !mine(it) } ?: stories.first()
+    return shown to stories.subList(0, stories.indexOf(shown))
+}
 
 data class TopicSummary(
     val title: String,
@@ -78,8 +96,12 @@ data class ForumPost(
 /** An edit form for an existing post; [originalHtml] is what the editor would start with. */
 data class EditForm(val form: ReplyForm, val originalHtml: String)
 
-/** Header badge counts plus the number of unread topics. */
-data class Counters(val inbox: Int, val notifications: Int, val unreadTopics: Int)
+/** Header badge counts plus the number of unread topics, and Chatbox messages newer than the last one seen. */
+data class Counters(val inbox: Int, val notifications: Int, val unreadTopics: Int, val chat: List<ChatMessage> = emptyList())
+
+/** Whether [messages] hold one by someone else newer than [seenId]. */
+internal fun chatHasNews(messages: List<ChatMessage>, seenId: Long, me: String): Boolean =
+    messages.any { it.id > seenId && (me.isBlank() || !it.author.equals(me, ignoreCase = true)) }
 
 data class ChatMessage(
     val id: Long,

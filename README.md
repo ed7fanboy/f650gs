@@ -11,8 +11,11 @@ A lightweight native reader for [http://f650gs.pl/](http://f650gs.pl/). The app 
 - Native login screen (forum login form via HTTP POST; session cookies handed to the WebView) and the Konto screen (profile, followed content, attachments, app and forum settings, logout that also clears WebView cookies).
 - Settings screen (Konto → Ustawienia; "Aplikacja" tab): theme, footer filter, system notifications (private messages / forum notifications / new unread topics, checked every ~15 min by `ForumCheckJob`, JobScheduler), tab bar visibility, and tab order by dragging a row's ≡ handle (`RowDrag` in `AccountScreens.kt`).
 - Top bar: search, notifications bell and the member's photo, which opens the Konto screen (profile, followed content, attachments, app/forum settings, logout); pull down to refresh any screen.
-- Ostatnie: one card per topic (grouped by topic id), previewing the topic's earliest entry in the stream that is not your own, with later ones summarised; tapping opens the first unread post.
-- Red count badges: unread conversations on Wiadomości, unread topics on Nieprzecz., forum notifications on the bell (header counters from `/discover/unread/`).
+- Ostatnie: one card per topic (grouped by topic id), previewing the first post you have not read (posts listed in `/discover/unread/`), or the latest one by someone else when all are read, with the newer ones summarised as "+N"; tapping opens that post.
+- Red count badges: unread conversations on Wiadomości, unread topics on Nieprzecz., forum notifications on the bell (header counters from `/discover/unread/`); a red dot on Chatbox when someone else wrote after the newest message seen in the app (checked with the counters, at most once a minute).
+- Pasting into a post or message: an address that is only an image (jpg, png, gif, webp, avif) becomes a photo, a YouTube link an embedded film in the forum's own `ipsEmbeddedVideo` markup (480 x 270); any other text pastes as is.
+- Mentions (`Mentions.kt`): Tapatalk's `[mention=ID]Name[/mention]` and `[mention]Name[/mention]` in posts become profile links (the name-only form is looked up with the forum's member search on tap); in the composer, `@` plus three letters lists members (people in the open topic first, then names starting with the letters) and the pick is sent as the forum editor's mention link (`data-mentionid`), which notifies the member.
+- Drafts (`Drafts.kt`): unsent composer text per topic, conversation and Chatbox, saved on leaving the screen or the app; photos and films are kept as their post HTML, mentions as member id and name.
 - Native notifications (bell, signed in only): the forum's notification list with older pages, entries open the topic natively; native notification settings built from the forum's own form (switches save on their own).
 - Other forum pages (account settings, e-mail/password/username change, ignored members, password reset, …) are drawn natively from their notes, lists and IPS forms by `FormPages.kt` (`ForumParser.nativePage`); pages with the post editor, uploads or unknown fields fall back to the WebView.
 - Native sign-up: the forum's registration form rendered field by field (labels, anti-bot question, terms box), errors from the forum shown next to the fields.
@@ -87,6 +90,7 @@ Code in `app/src/main/java/pl/f650gs/forum/`:
 - `UiKit.kt` — shared views (cards, pills, badges, labels), post text and footer filters, links out
 - `ForumRepository.kt` — HTTP with the session cookies; `ForumParser.kt` — reads forum pages (no network, no Android classes); `ForumModels.kt` — data classes
 - `ListCache.kt`, `Avatars.kt` — saved lists and member photos
+- `Photos.kt` — photos and pasted links in the composer; `Mentions.kt` — mentions; `Drafts.kt` — composer drafts on disk
 - `ForumWebActivity.kt` — forum pages the native renderer cannot draw
 - `ForumCheckJob.kt` — background check for system notifications; `ImagePreviewActivity.kt` — photo viewer
 

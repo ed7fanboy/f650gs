@@ -120,6 +120,35 @@ class ForumParserTest {
         assertNull(ForumParser.account(page("index.html", "http://f650gs.pl/")))
     }
 
+    @Test fun chatNewsIgnoresSeenAndOwnMessages() {
+        fun message(id: Long, author: String) = ChatMessage(id, "1", author, "", "hej", 0)
+        val batch = listOf(message(10, "Ja"), message(11, "Członek 1"))
+        assertTrue(chatHasNews(batch, 10, "Ja"))
+        assertFalse(chatHasNews(batch, 11, "Ja"))
+        assertFalse(chatHasNews(listOf(message(12, "ja")), 11, "Ja"))
+        assertFalse(chatHasNews(emptyList(), 11, "Ja"))
+    }
+
+    @Test fun homePreviewPicksFirstUnreadElseLatest() {
+        val stream = ForumParser.activity(page("discover_in.html", "http://f650gs.pl/discover/"))
+        val topic = stream.filter { it.url.contains("/topic/4282-") }
+        assertTrue(topic.size >= 5)
+        val me = topic[1].author
+        // All read: the latest post by someone else, with nothing or only your own posts above it.
+        val (latest, aboveLatest) = homePreview(topic, me)
+        assertEquals(topic.first { it.author != me }, latest)
+        assertTrue(aboveLatest.all { it.author == me })
+        // Three oldest unread: the oldest of them (by someone else), everything newer summarised.
+        val marked = markUnread(topic, topic.takeLast(3))
+        assertEquals(3, marked.count { it.unread })
+        val (first, newer) = homePreview(marked, "")
+        assertEquals(topic.last().url, first.url)
+        assertEquals(topic.size - 1, newer.size)
+        // Your own unread posts are skipped.
+        val (notMine, _) = homePreview(marked, topic.last().author)
+        assertTrue(notMine.author != topic.last().author || !notMine.unread)
+    }
+
     @Test fun countersReadHeaderBadges() {
         val counters = ForumParser.counters(page("discover_in.html", "http://f650gs.pl/discover/"))
         assertTrue(counters.inbox >= 0 && counters.notifications >= 0)

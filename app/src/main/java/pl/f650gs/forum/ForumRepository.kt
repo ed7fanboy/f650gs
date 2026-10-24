@@ -20,6 +20,12 @@ class ForumRepository {
 
     fun unread(): List<ActivityStory> = ForumParser.activity(page("/discover/unread/"))
 
+    /** The activity stream; signed in, with the posts you have not read marked. */
+    fun home(signedIn: Boolean): List<ActivityStory> {
+        val stories = activity()
+        return if (signedIn) markUnread(stories, runCatching { unread() }.getOrDefault(emptyList())) else stories
+    }
+
     fun categories(): List<ForumCategory> = ForumParser.categories(page("/"))
 
     fun forum(url: String): ForumPage = ForumParser.forum(page(safeForumUrl(url)))
@@ -108,7 +114,15 @@ class ForumRepository {
         return ForumParser.editForm(page(url))
     }
 
-    fun counters(): Counters = ForumParser.counters(page("/discover/unread/"))
+    /** Header counts; with [chatSince] >= 0 also the Chatbox messages after that id (0 = the latest 100). */
+    fun counters(chatSince: Long = -1): Counters {
+        val document = page("/discover/unread/")
+        val counters = ForumParser.counters(document)
+        if (chatSince < 0) return counters
+        val csrf = ForumParser.chatSession(document.html()).second ?: return counters
+        val chat = runCatching { chatMessages(chatSince, csrf).messages }.getOrDefault(emptyList())
+        return counters.copy(chat = chat)
+    }
 
     /**
      * Signs in with the forum's own login form and returns the session cookies

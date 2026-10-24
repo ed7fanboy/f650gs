@@ -61,7 +61,12 @@ private const val KEY_SHARE = "photos_share_url"
 private const val THUMB_DP = 64
 
 /** The text box's content as post HTML: paragraphs of text with the media in their places. */
-internal fun postHtml(text: CharSequence): String {
+internal fun postHtml(content: CharSequence): String {
+    val (text, mentions) = withMentionTokens(content)
+    return mentions.entries.fold(mediaHtml(text)) { html, (token, mention) -> html.replace(token, mention) }
+}
+
+private fun mediaHtml(text: CharSequence): String {
     val spanned = text as? Spanned ?: return paragraphsHtml(text.toString())
     val html = StringBuilder()
     var from = 0
@@ -109,6 +114,53 @@ private fun insertMedia(edit: EditText, span: Any) {
     val media = SpannableString(MEDIA_CHAR.toString()).apply { setSpan(span, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
     text.insert(at, SpannableStringBuilder(before).append(media).append(after))
     edit.setSelection((at + before.length + 1 + after.length).coerceAtMost(edit.text.length))
+}
+
+// Formats every current browser shows in a page; TIFF and HEIC are left as links, most browsers cannot draw them.
+private val IMAGE_URL = Regex("""https?://[^\s"'<>]+\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s"'<>]*)?""", RegexOption.IGNORE_CASE)
+private val YOUTUBE_URL = Regex(
+    """https?://(?:(?:www\.|m\.)?youtube\.com/(?:watch\?(?:[^\s"'<>]*&)?v=|shorts/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})[^\s"'<>]*""",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
+ * Pasted text that is only an image address or a YouTube link, as post media: the image like an
+ * uploaded photo, the film the way the forum stores an embedded one. Null for any other text.
+ */
+internal fun pastedMedia(pasted: String): DraftMedia? {
+    val text = pasted.trim()
+    YOUTUBE_URL.matchEntire(text)?.let { match ->
+        val id = match.groupValues[1]
+        // 480 x 270 like most films on the forum; a smaller size shows as a thumbnail-sized player on the website.
+        val html = "<div class=\"ipsEmbeddedVideo\"><div><iframe allowfullscreen=\"true\" frameborder=\"0\" height=\"270\" " +
+            "src=\"https://www.youtube.com/embed/$id?feature=oembed\" width=\"480\"></iframe></div></div>"
+        return DraftMedia(html, "https://img.youtube.com/vi/$id/hqdefault.jpg")
+    }
+    if (!IMAGE_URL.matches(text)) return null
+    return DraftMedia("<p><img src=\"${text.replace("&", "&amp;")}\" alt=\"\"></p>", text)
+}
+
+/** Turns an image address or YouTube link pasted into [edit] into media, while [enabled]. */
+internal fun MainActivity.embedPastedLinks(edit: EditText, enabled: () -> Boolean = { true }) {
+    edit.addTextChangedListener(object : android.text.TextWatcher {
+        private var pasted: IntRange? = null
+        override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) = Unit
+        override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
+            // Typing adds a letter at a time; a whole address at once is a paste (or the keyboard's clipboard).
+            pasted = if (count >= 10 && enabled()) start until start + count else null
+        }
+        override fun afterTextChanged(s: Editable) {
+            val range = pasted ?: return
+            pasted = null
+            if (range.last >= s.length) return
+            val media = pastedMedia(s.substring(range.first, range.last + 1)) ?: return
+            s.delete(range.first, range.last + 1)
+            edit.setSelection(range.first)
+            lateinit var span: PostMediaSpan
+            span = mediaSpan(media.html, media.previewUrl) { loaded -> replaceSpan(edit, span, loaded) }
+            insertMedia(edit, span)
+        }
+    })
 }
 
 private fun removeMedia(text: Editable, span: Any) {

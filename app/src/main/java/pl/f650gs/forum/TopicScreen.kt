@@ -407,6 +407,7 @@ internal fun MainActivity.focusScript(focusPostId: Long): String {
 
 internal fun MainActivity.routePostLink(uri: Uri) {
     if (uri.scheme !in setOf("http", "https")) return
+    if (uri.toString().startsWith(MENTION_LOOKUP)) return openMention(uri.getQueryParameter("name").orEmpty())
     if (isProfileUrl(uri.toString())) return navigate(Screen.Profile("", uri.toString()))
     if (uri.host?.lowercase()?.let { it == "f650gs.pl" || it.endsWith(".f650gs.pl") } == true) {
         val path = uri.path.orEmpty()

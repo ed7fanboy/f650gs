@@ -47,6 +47,7 @@ class MainActivity : Activity() {
         internal const val HIDE_SIGNATURES_KEY = "hide_signatures"
         internal const val NAV_ORDER_KEY = "nav_order"
         internal const val NAV_HIDDEN_KEY = "nav_hidden"
+        internal const val CHAT_SEEN_KEY = "chat_seen_id"
         internal const val NOTIFICATION_PERMISSION_REQUEST = 4103
         // Mobile-app footers appended to posts ("Wysłane z mojego SM-S931B przy użyciu Tapatalka" and the like).
         internal val SIGNATURE = Regex("""(?i)(wysłane|wysłano|sent)\s+(z|ze|from)\s[^\n]{0,80}?tapatalk\w*[.!]?|wytapatalkowano[^\n.!]{0,60}[.!]?""")
@@ -93,6 +94,9 @@ class MainActivity : Activity() {
     internal val main = Handler(Looper.getMainLooper())
     internal val requestId = AtomicInteger()
     internal val history = ArrayDeque<Screen>()
+    // The screen last drawn, and unsent composer text per topic, conversation and the Chatbox (kept while the app runs).
+    internal var renderedScreen: Screen? = null
+    internal val drafts = mutableMapOf<String, CharSequence>()
     internal val bookmarks = linkedMapOf<String, String>()
     internal var signedIn = false
 
@@ -141,6 +145,7 @@ class MainActivity : Activity() {
     internal lateinit var pullIndicator: android.widget.ImageView
     internal var counters = Counters(0, 0, 0)
     internal var countersFetchedAt = 0L
+    internal var chatUnread = false
     internal var resumed = false
     internal val chatPoll = object : Runnable {
         override fun run() {
@@ -426,6 +431,16 @@ class MainActivity : Activity() {
         else -> 0
     }
 
+    /** Remembers the newest Chatbox message shown in the app and drops the tab's dot. */
+    internal fun markChatSeen(id: Long) {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (id > prefs.getLong(CHAT_SEEN_KEY, 0)) prefs.edit().putLong(CHAT_SEEN_KEY, id).apply()
+        if (chatUnread) {
+            chatUnread = false
+            populateNav(bottomNav)
+        }
+    }
+
     /** Small red count bubble; hidden at 0. */
     internal fun badgeView(count: Int = 0): TextView = label("", 10f, WHITE, bold = true).apply {
         gravity = Gravity.CENTER
@@ -463,6 +478,9 @@ class MainActivity : Activity() {
                 if (selected) background = rounded(TEAL_LIGHT, 16)
             }, FrameLayout.LayoutParams(iconWidth, dp(34)))
             addView(badgeView(tabBadge(tab)), FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { rightMargin = dp(4) })
+            if (tab == Tab.CHATBOX && chatUnread) addView(View(this@MainActivity).apply {
+                background = rounded(Color.rgb(220, 50, 47), 5)
+            }, FrameLayout.LayoutParams(dp(10), dp(10), Gravity.TOP or Gravity.END).apply { topMargin = dp(2); rightMargin = dp(8) })
         }, LinearLayout.LayoutParams(iconWidth, dp(34)))
         addView(label(title, 11f, color, bold = selected).apply {
             gravity = Gravity.CENTER
@@ -668,10 +686,43 @@ class MainActivity : Activity() {
         bottomNavScroll.post { bottomNavScroll.scrollTo(0, 0) }
     }
 
+    /** Which composer draft a screen uses; pages of one topic share it. */
+    internal fun draftKey(screen: Screen): String? = when (screen) {
+        is Screen.Topic -> "topic:" + topicPath(screen.url)
+        is Screen.Conversation -> "conversation:" + runCatching { java.net.URI(screen.url).path }.getOrDefault(screen.url)
+        Screen.Chatbox -> "chatbox"
+        else -> null
+    }
+
+    /** Keeps the composer's text as the draft for [key], in memory and on disk. */
+    private fun keepDraft(key: String) {
+        if (chatInput.text.isBlank()) drafts.remove(key) else drafts[key] = android.text.SpannableStringBuilder(chatInput.text)
+        persistDraft(key, drafts[key])
+    }
+
+    private fun switchDraft(from: String?, to: String?) {
+        if (from == to) return
+        // An unfinished edit of a post is not a draft of a new reply.
+        if (editing != null) setQuote(null)
+        if (from != null) keepDraft(from)
+        chatInput.setText(to?.let { key -> drafts[key] ?: storedDraft(key)?.also { drafts[key] = it } } ?: "")
+        chatInput.setSelection(chatInput.text.length)
+    }
+
     internal fun renderCurrent() {
         // A page still loading for the previous screen must not draw over this one.
         requestId.incrementAndGet()
         progress.visibility = View.GONE
+        if (currentScreen != renderedScreen) {
+            // Another screen (also on Back) starts at the top. The scroll view takes the focus first: when the
+            // composer hides, focus would otherwise jump to a view in the page and scroll down to it.
+            scroll.isFocusableInTouchMode = true
+            if (android.os.Build.VERSION.SDK_INT >= 26) scroll.defaultFocusHighlightEnabled = false
+            scroll.requestFocus()
+            scroll.scrollTo(0, 0)
+            switchDraft(renderedScreen?.let(::draftKey), draftKey(currentScreen))
+            renderedScreen = currentScreen
+        }
         updateChrome()
         chatList = null
         conversation = null
@@ -688,7 +739,7 @@ class MainActivity : Activity() {
         newTopicButton.visibility = View.GONE
         if (currentScreen != Screen.Chatbox) main.removeCallbacks(chatPoll)
         when (val screen = currentScreen) {
-            Screen.Home -> fetchCached("home", ListCache.STORIES, "Ładuję najnowsze wpisy…", { it.activity() }, ::renderHome)
+            Screen.Home -> fetchCached("home", ListCache.STORIES, "Ładuję najnowsze wpisy…", { it.home(signedIn) }, ::renderHome)
             Screen.Forums -> fetchCached("forums", ListCache.CATEGORIES, "Ładuję działy…", { it.categories() }, ::renderForums)
             Screen.Saved -> renderSaved()
             Screen.Unread -> if (signedIn) {
@@ -781,6 +832,8 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         resumed = false
+        // The app may be closed from here on: save what is being written (not an edit of an existing post).
+        if (editing == null) renderedScreen?.let(::draftKey)?.let(::keepDraft)
         super.onPause()
     }
 
@@ -793,6 +846,8 @@ class MainActivity : Activity() {
         fun scrollToCss(cssTop: Float) {
             main.post {
                 webView.post {
+                    // The page's delayed focus calls can still arrive after the topic was left.
+                    if (!webView.isAttachedToWindow) return@post
                     val y = content.top + webView.top + (cssTop * resources.displayMetrics.density).toInt() - dp(8)
                     scroll.smoothScrollTo(0, y.coerceAtLeast(0))
                 }
@@ -894,10 +949,14 @@ class MainActivity : Activity() {
         if (!force && now - countersFetchedAt < 60_000) return
         countersFetchedAt = now
         repository.updateSessionCookies(CookieManager.getInstance().getCookie("http://f650gs.pl/"))
+        val chatSeen = getSharedPreferences(PREFS, MODE_PRIVATE).getLong(CHAT_SEEN_KEY, 0)
         io.execute {
-            val result = runCatching { repository.counters() }.getOrNull() ?: return@execute
+            val result = runCatching { repository.counters(chatSeen) }.getOrNull() ?: return@execute
             main.post {
                 counters = result
+                // First check ever: take the current Chatbox as seen rather than flag 100 old messages.
+                if (chatSeen == 0L) markChatSeen(result.chat.maxOfOrNull { it.id } ?: 0)
+                else chatUnread = currentScreen != Screen.Chatbox && chatHasNews(result.chat, chatSeen, accountName())
                 // Counts seen in the app should not come back as system notifications.
                 ForumCheckJob.markSeen(this, result)
                 setBadge(notificationsBadge, result.notifications)
