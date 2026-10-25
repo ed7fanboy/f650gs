@@ -29,6 +29,9 @@ class ForumCheckJob : JobService() {
         private const val LAST_INBOX = "last_inbox"
         private const val LAST_NOTIFY = "last_notify"
         private const val LAST_TOPICS = "last_topics"
+        private const val ID_MESSAGES = 1
+        private const val ID_FORUM = 2
+        private const val ID_TOPICS = 3
 
         fun anyEnabled(context: Context): Boolean {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -50,6 +53,20 @@ class ForumCheckJob : JobService() {
                 .setPersisted(true)
                 .build()
             runCatching { scheduler.schedule(job) }
+        }
+
+        /** Takes this job's notifications off the status bar once the member is in the app: [ids] or, without any, all of them. */
+        fun dismiss(context: Context, vararg ids: Int) {
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            (if (ids.isEmpty()) intArrayOf(ID_MESSAGES, ID_FORUM, ID_TOPICS) else ids).forEach(manager::cancel)
+        }
+
+        /** The notification for [screen]'s list, which the member is looking at now. */
+        internal fun dismissFor(context: Context, screen: Screen) = when (screen) {
+            Screen.Messages -> dismiss(context, ID_MESSAGES)
+            Screen.Notifications -> dismiss(context, ID_FORUM)
+            Screen.Unread -> dismiss(context, ID_TOPICS)
+            else -> Unit
         }
 
         /** Remembers counts the user has already seen in the app, so they do not trigger notifications. */
@@ -85,13 +102,13 @@ class ForumCheckJob : JobService() {
         val lastNotify = prefs.getInt(LAST_NOTIFY, 0)
         val lastTopics = prefs.getInt(LAST_TOPICS, 0)
         if (prefs.getBoolean(NOTIFY_MESSAGES, false) && counters.inbox > lastInbox) {
-            notify(1, "Nowa wiadomość prywatna", "Nieprzeczytane rozmowy: ${counters.inbox}", "messages")
+            notify(ID_MESSAGES, "Nowa wiadomość prywatna", "Nieprzeczytane rozmowy: ${counters.inbox}", "messages")
         }
         if (prefs.getBoolean(NOTIFY_FORUM, false) && counters.notifications > lastNotify) {
-            notify(2, "Nowe powiadomienie na forum", "Odpowiedzi, cytaty lub polubienia: ${counters.notifications}", "notifications")
+            notify(ID_FORUM, "Nowe powiadomienie na forum", "Odpowiedzi, cytaty lub polubienia: ${counters.notifications}", "notifications")
         }
         if (prefs.getBoolean(NOTIFY_TOPICS, false) && counters.unreadTopics > lastTopics) {
-            notify(3, "Nowe wpisy na forum", "Nieprzeczytane tematy: ${counters.unreadTopics}", "unread")
+            notify(ID_TOPICS, "Nowe wpisy na forum", "Nieprzeczytane tematy: ${counters.unreadTopics}", "unread")
         }
         markSeen(this, counters)
     }

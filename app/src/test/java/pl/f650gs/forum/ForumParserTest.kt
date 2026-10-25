@@ -364,6 +364,29 @@ class ForumParserTest {
         assertEquals("http://f650gs.pl/notifications/?page=2", page.nextUrl)
     }
 
+    @Test fun notificationsMergeReactionsToOnePost() {
+        val page = ForumParser.notifications(page("notifications_likes.html", "http://f650gs.pl/notifications/"))
+        assertEquals(2, page.items.size)
+        val (both, single) = page.items
+        assertEquals("Trzeci, Czwarty, Drugi i 1 inny – reakcja na Twój wpis w temacie Przykładowy temat", both.text)
+        assertEquals("5 minut temu", both.time)
+        assertEquals("Trzeci", both.author)
+        assertTrue(both.unread)
+        assertEquals("Piąty – reakcja na Twój wpis w temacie Przykładowy temat", single.text)
+        assertFalse(single.unread)
+    }
+
+    @Test fun mergeFormKeepsTheForumsCombinedPost() {
+        val form = ForumParser.mergeForm(page("merge_form.html", "http://f650gs.pl/topic/100-przykladowy-temat/?do=multimodComment"))!!
+        assertEquals("final_comment_content", form.editor)
+        assertEquals("<p>Pierwszy post</p><p>Drugi post</p>", form.content)
+        assertEquals("1", form.fields["form_submitted"])
+        assertTrue(form.action, form.action.endsWith("do=multimodComment"))
+        // Neither a topic's own reply form nor an ordinary page is the merge step.
+        assertNull(ForumParser.mergeForm(page("topic_in.html", "http://f650gs.pl/topic/4282-temat-1/")))
+        assertNull(ForumParser.mergeForm(page("notifications.html", "http://f650gs.pl/notifications/")))
+    }
+
     @Test fun signUpFormReadsEveryField() {
         val form = ForumParser.signUpForm(page("register.html", "http://f650gs.pl/register/"))
         assertNotNull(form)

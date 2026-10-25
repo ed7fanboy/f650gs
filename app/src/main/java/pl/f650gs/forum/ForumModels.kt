@@ -146,7 +146,7 @@ data class MoveForm(val action: String, val hidden: Map<String, String>, val tar
 data class MoveTarget(val id: String, val title: String, val depth: Int)
 
 /** A forum comment form (topic reply or conversation reply): where to post it and its hidden fields. */
-data class ReplyForm(val action: String, val fields: Map<String, String>, val editor: String) {
+data class ReplyForm(val action: String, val fields: Map<String, String>, val editor: String, val content: String = "") {
     val contentId: String get() = fields.keys.firstNotNullOfOrNull { Regex("""commentform_(\d+)_submitted""").find(it)?.groupValues?.get(1) }.orEmpty()
 }
 

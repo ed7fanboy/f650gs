@@ -35,9 +35,13 @@ object Avatars {
         }
     }
 
-    /** Hands the (downsized) image to [done] on the main thread; null when it can't be loaded. */
+    /**
+     * Hands the (downsized) image to [done] on the main thread; null when it can't be loaded.
+     * Always later than the call, even for a cached image: callers refer to what they get back
+     * (a span) from inside [done].
+     */
     fun loadBitmap(url: String, done: (Bitmap?) -> Unit) {
-        cache.get(url)?.let { done(it); return }
+        cache.get(url)?.let { cached -> main.post { done(cached) }; return }
         pool.execute {
             val bitmap = runCatching { download(url) }.getOrNull()
             if (bitmap != null) cache.put(url, bitmap)

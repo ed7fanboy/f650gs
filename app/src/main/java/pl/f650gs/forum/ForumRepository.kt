@@ -174,7 +174,8 @@ class ForumRepository {
     /**
      * Sends the topic's moderation form: [action] (e.g. "merge", "delete") on the posts [postIds].
      * A delete first answers with the forum's "are you sure?" form, sent again confirmed (the
-     * member already confirmed in the app). Done when the forum shows no error; the page it lands
+     * member already confirmed in the app); a merge answers with the form for the combined post,
+     * sent as the forum proposes it. Done when the forum shows no error; the page it lands
      * on may be empty, e.g. after deleting the last page's posts.
      */
     fun moderate(form: ModerationForm, action: String, postIds: Collection<Long>) {
@@ -185,9 +186,15 @@ class ForumRepository {
         ForumParser.confirmForm(document)?.let { confirm ->
             document = send(confirm.action, fields + confirm.fields + ("wasConfirmed" to "1"))
         }
+        ForumParser.mergeForm(document)?.let { merge ->
+            // Joining posts with photos takes the forum longer than the usual 15 seconds.
+            document = connect(merge.action).method(org.jsoup.Connection.Method.POST).timeout(60_000)
+                .data(fields + merge.fields).data(merge.editor, merge.content).execute().parse()
+        }
         val problem = ForumParser.pageErrors(document)
         if (problem.isNotBlank()) error(problem)
         if (ForumParser.confirmForm(document) != null) error("Forum nie przyjęło potwierdzenia. Zrób to na stronie forum.")
+        if (ForumParser.mergeForm(document) != null) error("Forum nie połączyło wpisów. Zrób to na stronie forum.")
     }
 
     /** The move form for a topic, asked for in its no-script shape so all sections come in one list. */

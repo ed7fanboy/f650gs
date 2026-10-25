@@ -420,6 +420,7 @@ object ForumParser {
     }
 
     fun notifications(document: Document): NotificationsPage {
+        val stamps = mutableMapOf<ForumNotification, String>()
         val items = document.select("ol[data-role=tableRows] > li.ipsDataItem").mapNotNull { row ->
             val link = row.selectFirst("a.ipsDataItem_title[href]") ?: return@mapNotNull null
             val photo = row.selectFirst(".ipsDataItem_icon img")
@@ -431,10 +432,38 @@ object ForumParser {
                 author = photo?.attr("alt").clean(),
                 photo = photoUrl(photo),
                 unread = row.hasClass("ipsDataItem_unread") || row.selectFirst(".ipsItemStatus:not(.ipsItemStatus_read)") != null,
-            )
+            ).also { stamps[it] = row.selectFirst("time")?.attr("datetime").orEmpty() }
         }
         val next = document.selectFirst("ul.ipsPagination .ipsPagination_next:not(.ipsPagination_inactive) a[href]")
-        return NotificationsPage(items, next?.absUrl("href")?.let(::safeForumUrl).orEmpty())
+        return NotificationsPage(mergeReactions(items, stamps), next?.absUrl("href")?.let(::safeForumUrl).orEmpty())
+    }
+
+    private const val REACTED = " – reakcja na Twój wpis w temacie "
+
+    /**
+     * The forum lists reactions per post and per time it notified, so one post can come back as
+     * several rows ("A reacted", later "B, C and 1 other reacted"). Rows for the same post become
+     * one: the likers' names combined, the newest row's time and photo, unread if any was.
+     * [stamps] holds each row's ISO time.
+     */
+    private fun mergeReactions(items: List<ForumNotification>, stamps: Map<ForumNotification, String>): List<ForumNotification> {
+        fun post(item: ForumNotification) = item.url.takeIf { REACTED in item.text }
+        val merged = LinkedHashMap<String, MutableList<ForumNotification>>()
+        items.forEach { item -> merged.getOrPut(post(item) ?: "#${merged.size}") { mutableListOf() }.add(item) }
+        return merged.values.map { group ->
+            if (group.size == 1) return@map group.first()
+            val newest = group.maxByOrNull { stamps[it].orEmpty() } ?: group.first()
+            val names = linkedSetOf<String>()
+            var others = 0
+            group.forEach { item ->
+                val who = item.text.substringBefore(REACTED)
+                val more = Regex(" i (\\d+) (?:inny|innych|inne)$").find(who)
+                others += more?.groupValues?.get(1)?.toInt() ?: 0
+                who.substring(0, more?.range?.first ?: who.length).split(", ").map { it.trim() }.filter { it.isNotEmpty() }.forEach(names::add)
+            }
+            val list = names.joinToString(", ") + if (others > 0) " i $others ${if (others == 1) "inny" else "innych"}" else ""
+            newest.copy(text = list + REACTED + newest.text.substringAfter(REACTED), unread = group.any { it.unread })
+        }
     }
 
     private fun formToggle(input: Element, label: String) = FormToggle(
@@ -678,6 +707,17 @@ object ForumParser {
         val form = document.select("form").firstOrNull { it.selectFirst("input[name=wasConfirmed]") != null } ?: return null
         val fields = form.select("input[type=hidden][name]").associate { it.attr("name") to it.attr("value") }
         return ReplyForm(safeForumUrl(form.absUrl("action")), fields, "")
+    }
+
+    /**
+     * The forum's second step of a merge: a form whose editor holds the combined text of the posts
+     * (the forum's own proposal, kept as [ReplyForm.content]). Null for any other page.
+     */
+    fun mergeForm(document: Document): ReplyForm? {
+        val form = replyForm(document) ?: return null
+        if (!form.fields.containsKey("form_submitted")) return null
+        val editor = document.selectFirst("textarea[data-role=contentEditor]")?.wholeText().orEmpty()
+        return form.copy(content = editor)
     }
 
     fun loginCsrf(document: Document): String? =

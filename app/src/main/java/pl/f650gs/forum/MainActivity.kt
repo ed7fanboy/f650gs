@@ -742,6 +742,7 @@ class MainActivity : Activity() {
         conversation = null
         modSelected.clear()
         updateModBar()
+        ForumCheckJob.dismissFor(this, currentScreen)
         val composing = signedIn && (currentScreen == Screen.Chatbox || currentScreen is Screen.Conversation)
         chatComposer.visibility = if (composing) View.VISIBLE else View.GONE
         photoButton.visibility = if (currentScreen is Screen.Topic || currentScreen is Screen.Conversation) View.VISIBLE else View.GONE
@@ -835,6 +836,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed = true
+        ForumCheckJob.dismiss(this)
         if (currentScreen == Screen.Chatbox && chatCsrf.isNotBlank()) chatPoll.run()
         refreshCounters()
         checkForUpdate()
