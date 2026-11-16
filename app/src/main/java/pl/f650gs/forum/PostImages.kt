@@ -26,7 +26,7 @@ private fun postKey(url: String) = Regex("""comment=(\d+)""").find(url)?.groupVa
 
 /**
  * Shows the image marker in [holder] for the post at [url]: at once when already known, otherwise
- * after reading the post in the background, when [lookUp] allows it.
+ * after reading the post in the background (as a guest, so the forum does not mark the topic read), when [lookUp] allows it.
  */
 internal fun MainActivity.markPostImages(holder: LinearLayout, url: String, lookUp: Boolean) {
     val prefs = getSharedPreferences(IMAGE_PREFS, Context.MODE_PRIVATE)
@@ -38,7 +38,7 @@ internal fun MainActivity.markPostImages(holder: LinearLayout, url: String, look
     waiting[key] = mutableListOf(WeakReference(holder))
     imageChecks.execute {
         val count = runCatching {
-            val page = repository.topic(url)
+            val page = repository.topic(url, asGuest = true)
             val post = page.posts.firstOrNull { it.id == page.focusPostId } ?: page.posts.firstOrNull()
             post?.let { ForumParser.imageCount(it.html) }
         }.getOrNull()

@@ -105,11 +105,54 @@ internal fun MainActivity.setComposerFull(full: Boolean) {
     if (full) chatInput.requestFocus()
 }
 
-internal fun MainActivity.setQuote(post: ForumPost?) {
+/**
+ * "Cytuj": the post as editable text in a window, to quote only the part that matters. Left as it was, the
+ * quote keeps the post's own formatting and photos; edited, it is the remaining text. "Cały wpis" quotes it whole.
+ */
+internal fun MainActivity.chooseQuote(post: ForumPost) {
+    val clean = post.copy(html = stripSignatureHtml(post.html, always = true))
+    val original = ForumParser.quoteText(clean.html)
+    if (original.isBlank()) return setQuote(post)
+    val box = EditText(this).apply {
+        setText(original)
+        textSize = 15f
+        setTextColor(INK)
+        minLines = 3
+        maxLines = 12
+        gravity = Gravity.TOP or Gravity.START
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        background = rounded(CANVAS, 14)
+        setPadding(dp(14), dp(10), dp(14), dp(10))
+    }
+    val frame = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(20), dp(8), dp(20), 0)
+        addView(label("Usuń to, czego nie chcesz cytować.", 13f, MUTED), margin(bottom = 8))
+        addView(box, LinearLayout.LayoutParams(-1, -2))
+    }
+    val dialog = AlertDialog.Builder(this)
+        .setTitle("Cytat: ${post.author}")
+        .setView(frame)
+        .setPositiveButton("Cytuj") { _, _ ->
+            val edited = box.text.toString().trim()
+            when {
+                edited.isBlank() -> Unit
+                edited == original -> setQuote(post)
+                else -> setQuote(post.copy(html = paragraphsHtml(edited)), part = true)
+            }
+        }
+        .setNeutralButton("Cały wpis") { _, _ -> setQuote(post) }
+        .setNegativeButton("Anuluj", null)
+        .create()
+    dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+    dialog.show()
+}
+
+internal fun MainActivity.setQuote(post: ForumPost?, part: Boolean = false) {
     if (editing != null) chatInput.setText("")
     editing = null
     quotedPost = post
-    quoteChip.text = post?.let { "❝  Cytujesz: ${it.author}   ✕" }.orEmpty()
+    quoteChip.text = post?.let { "❝  Cytujesz${if (part) " fragment" else ""}: ${it.author}   ✕" }.orEmpty()
     quoteChip.visibility = if (post == null) View.GONE else View.VISIBLE
     updateComposerHeader()
     if (post != null) {
@@ -278,8 +321,14 @@ internal fun MainActivity.sendChat() {
     }
 }
 
-internal fun MainActivity.scrollChatToEnd() {
-    scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+internal fun MainActivity.scrollChatToEnd() = scrollListToEnd()
+
+/**
+ * To the bottom of the list without moving focus: ScrollView.fullScroll() also hands focus to the list,
+ * which took it from the reply box the moment the keyboard opened (the keyboard stayed up, typing went nowhere).
+ */
+internal fun MainActivity.scrollListToEnd() {
+    scroll.post { scroll.scrollTo(0, maxOf(0, (scroll.getChildAt(0)?.height ?: 0) - scroll.height + scroll.paddingBottom)) }
 }
 
 internal fun MainActivity.chatBubble(message: ChatMessage, previous: ChatMessage?): View {

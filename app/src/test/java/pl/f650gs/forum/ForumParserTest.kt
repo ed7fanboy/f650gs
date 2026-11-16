@@ -149,10 +149,26 @@ class ForumParserTest {
         assertTrue(forum.subforums.any { it.title == "Mechanika ogólna" })
     }
 
+    @Test fun unreadTopicTitleHasNoUnreadLinkText() {
+        val h1 = org.jsoup.Jsoup.parse("""<h1 class="ipsType_pageTitle"><span class="ipsType_break ipsContained">
+            <a href="http://f650gs.pl/topic/1-t/?do=getNewComment" title="Przejdź do pierwszego nieprzeczytanego posta"><span class="ipsBadge ipsBadge_new">Przejdź do pierwszego nieprzeczytanego posta</span></a>
+            <span>Temat 1</span></span></h1>""").selectFirst("h1")
+        assertEquals("Temat 1", ForumParser.pageTitle(h1))
+    }
+
+    @Test fun unreadTopicLinkIsNotTheTitleInLists() {
+        val row = """<ol class="cForumTopicTable"><li data-rowid="1"><div class="ipsDataItem_main"><h4 class="ipsDataItem_title">
+            <a href="http://f650gs.pl/topic/1-t/?do=getNewComment" title="Przejdź do pierwszego nieprzeczytanego posta"><span class="ipsBadge">Przejdź do pierwszego nieprzeczytanego posta</span></a>
+            <a href="http://f650gs.pl/topic/1-t/">Temat 1</a></h4></div></li></ol>"""
+        val topics = ForumParser.forum(org.jsoup.Jsoup.parse(row, "http://f650gs.pl/")).topics
+        assertEquals("Temat 1", topics.single().title)
+    }
+
     @Test fun topicPostsPagingAndReplyForm() {
         val url = "http://f650gs.pl/topic/13836-kilka-klatek-wkolo-komina/page/199/"
         val topic = ForumParser.topic(page("topic_in.html", url), url)
         assertTrue(topic.posts.isNotEmpty())
+        assertEquals("http://f650gs.pl/forum/5-fotoirelacje/", topic.forumUrl)
         topic.posts.forEach { post ->
             assertTrue(post.id > 0)
             assertTrue(post.author.isNotBlank())
@@ -531,5 +547,23 @@ class ForumParserTest {
         assertEquals("", ForumParser.pageErrors(Jsoup.parse(page.html().replace("Wpis jest za krótki.", "").replace("ipsMessage ipsMessage_error\">", "x\">").let {
             "<body><div id=\"ipsLayout_header\"><div class=\"ipsMessage ipsMessage_error\">Jest dostępna nowa wersja IPS Community Suite</div></div></body>"
         })))
+    }
+
+    @Test
+    fun staffSeeHiddenAndUnapprovedPosts() {
+        fun state(article: String) = ForumParser.postModState(Jsoup.parse("<body>$article</body>").selectFirst("article")!!)
+        assertEquals("hidden", state("<article><input data-role=\"moderation\" data-state=\"hidden\"></article>"))
+        assertEquals("", state("<article><input data-role=\"moderation\" data-state=\"unhidden\"></article>"))
+        assertEquals("unapproved", state("<article class=\"ipsModerated\"><input data-role=\"moderation\" data-state=\"unapproved hidden\"></article>"))
+        assertEquals("hidden", state("<article class=\"cPost ipsComment ipsModerated\"></article>"))
+        assertEquals("", state("<article class=\"cPost ipsComment\"></article>"))
+    }
+
+    @Test
+    fun quoteTextForEditing() {
+        val html = "<blockquote class=\"ipsQuote\"><p>stary cytat</p></blockquote><p>Pierwszy akapit<br>druga linia " +
+            "<img src=\"http://f650gs.pl/uploads/emoticons/smile.png\" alt=\":)\" data-emoticon=\"\"></p>" +
+            "<p><img src=\"http://x.pl/a.jpg\"></p><p>Drugi&nbsp;akapit</p>"
+        assertEquals("Pierwszy akapit\ndruga linia :)\n\nDrugi akapit", ForumParser.quoteText(html))
     }
 }

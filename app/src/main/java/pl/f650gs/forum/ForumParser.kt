@@ -16,9 +16,9 @@ object ForumParser {
             // IPS streams can put the topic link in different places depending on the
             // activity type. Prefer an actual topic URL so a profile/forum link cannot
             // accidentally become the card's headline.
-            val titleLink = item.selectFirst(".ipsStreamItem_title a[href*=/topic/]")
-                ?: item.selectFirst(".ipsStreamItem_status a[href*=/topic/]")
-                ?: item.selectFirst("a[href*=/topic/]")
+            val titleLink = item.selectFirst(".ipsStreamItem_title a[href*=/topic/]:not([href*=do=getNewComment])")
+                ?: item.selectFirst(".ipsStreamItem_status a[href*=/topic/]:not([href*=do=getNewComment])")
+                ?: item.selectFirst("a[href*=/topic/]:not([href*=do=getNewComment])")
                 ?: return@mapNotNull null
             val authorLink = item.selectFirst(
                 ".ipsStreamItem_header a[href*=/profile/], .ipsStreamItem_status a[href*=/profile/], .ipsStreamItem_action a[href*=/profile/]"
@@ -102,7 +102,7 @@ object ForumParser {
 
     fun forum(document: Document): ForumPage {
         val topics = document.select("ol.cForumTopicTable li[data-rowid]").mapNotNull { row ->
-            val titleLink = row.selectFirst(".ipsDataItem_title a[href*=/topic/]") ?: return@mapNotNull null
+            val titleLink = row.selectFirst(".ipsDataItem_title a[href*=/topic/]:not([href*=do=getNewComment])") ?: return@mapNotNull null
             TopicSummary(
                 title = titleLink.text().clean(),
                 author = row.selectFirst(".ipsDataItem_meta a[href*=/profile/]")?.text().clean(),
@@ -263,10 +263,12 @@ object ForumParser {
                     box.attr("data-actions").split(' ').filter { it.isNotBlank() }
                         .map { if (it == "hide" && box.attr("data-state").contains("hidden") && !box.attr("data-state").contains("unhidden")) "unhide" else it }
                 }.orEmpty(),
+                modState = postModState(article),
             ).takeIf { it.text.isNotBlank() || it.html.isNotBlank() }
         }
-        val title = document.selectFirst("h1.ipsType_pageTitle")?.text().clean().ifBlank { "Temat" }
-        val forum = document.selectFirst(".ipsType_pageTitle + p a[href*=/forum/]")?.text().clean()
+        val title = pageTitle(document.selectFirst("h1.ipsType_pageTitle")).ifBlank { "Temat" }
+        val forumLink = document.selectFirst(".ipsType_pageTitle + p a[href*=/forum/]")
+        val forum = forumLink?.text().clean()
         return TopicPage(
             title, forum, posts, url,
             focusPostId = focus.takeIf { id -> posts.any { it.id == id } } ?: 0,
@@ -274,7 +276,53 @@ object ForumParser {
             replyForm = replyForm(document),
             moderation = moderationForm(document),
             topicModeration = topicModeration(document),
+            forumUrl = forumLink?.absUrl("href")?.let(::safeForumUrl).orEmpty(),
         )
+    }
+
+    /**
+     * A post as plain text to edit before quoting it: paragraphs split by blank lines, line breaks kept,
+     * emoticons as their codes, pictures and quotes inside the post left out (the forum's own quote drops those too).
+     */
+    fun quoteText(html: String): String {
+        val body = Jsoup.parseBodyFragment(html).body()
+        body.select("blockquote, script, style").remove()
+        val out = StringBuilder()
+        fun walk(node: org.jsoup.nodes.Node) {
+            when (node) {
+                is org.jsoup.nodes.TextNode -> out.append(node.text())
+                is Element -> {
+                    val name = node.normalName()
+                    if (name == "br") { out.append('\n'); return }
+                    if (name == "img") {
+                        val emoticon = node.hasAttr("data-emoticon") || "/emoticons/" in node.attr("src")
+                        if (emoticon) out.append(node.attr("alt"))
+                        return
+                    }
+                    val block = name in setOf("p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "pre", "table", "tr")
+                    if (block) out.append("\n\n")
+                    node.childNodes().forEach(::walk)
+                    if (block) out.append("\n\n")
+                }
+            }
+        }
+        body.childNodes().forEach(::walk)
+        return out.toString().replace('\u00a0', ' ').lines().joinToString("\n") { it.trim() }
+            .replace(Regex("\n{3,}"), "\n\n").trim()
+    }
+
+    /**
+     * Whether staff see this post hidden or waiting for approval: the moderation checkbox's data-state words
+     * ("hidden", "unapproved"; "unhidden" is a visible post), else IPS's ipsModerated class on the post.
+     */
+    internal fun postModState(article: Element): String {
+        val words = article.selectFirst("input[data-role=moderation]")?.attr("data-state").orEmpty().split(' ').filter { it.isNotBlank() }
+        return when {
+            "unapproved" in words -> "unapproved"
+            "hidden" in words -> "hidden"
+            article.hasClass("ipsModerated") -> "hidden"
+            else -> ""
+        }
     }
 
     /** The "select posts, pick an action" form the forum shows administrators and moderators under a topic. */
@@ -849,6 +897,13 @@ object ForumParser {
         val query = uri.rawQuery?.let { "?$it" }.orEmpty()
         val fragment = uri.rawFragment?.let { "#$it" }.orEmpty()
         return "http://$host$path$query$fragment"
+    }
+
+    /** A heading's text without the badges IPS puts in it (the "go to first unread post" link of an unread topic). */
+    internal fun pageTitle(heading: Element?): String {
+        val copy = heading?.clone() ?: return ""
+        copy.select("a[href*=do=getNewComment], .ipsBadge, .ipsHide, .ipsTooltip").remove()
+        return copy.text().clean()
     }
 
     fun String?.clean(): String = this.orEmpty().replace(Regex("\\s+"), " ").trim()

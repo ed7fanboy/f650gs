@@ -38,19 +38,21 @@ class ForumRepository {
     /**
      * Opens a topic page. Redirects are followed by hand so the `#comment-ID` target of
      * `?do=getNewComment` (first unread post) or `?do=findComment` is not lost.
+     * With [asGuest] no session cookies are sent: the forum marks a topic read for whoever opens it, and
+     * background look-ups behind list cards must not do that.
      */
-    fun topic(url: String): TopicPage {
+    fun topic(url: String, asGuest: Boolean = false): TopicPage {
         var location = safeForumUrl(url)
         var focus = 0L
         var response: org.jsoup.Connection.Response? = null
         for (hop in 0 until 6) {
-            val current = connect(location).followRedirects(false).ignoreContentType(true).execute()
+            val current = connect(location, asGuest).followRedirects(false).ignoreContentType(true).execute()
             Regex("""comment[-=](\d+)""").find(location)?.let { focus = it.groupValues[1].toLong() }
             val next = current.header("Location")
             if (current.statusCode() !in 300..399 || next.isNullOrBlank()) { response = current; break }
             location = safeForumUrl(java.net.URI(location).resolve(next).toString())
         }
-        val document = (response ?: connect(location).execute()).parse()
+        val document = (response ?: connect(location, asGuest).execute()).parse()
         return ForumParser.topic(document, location.substringBefore('#'), focus)
     }
 
@@ -385,11 +387,11 @@ class ForumRepository {
         return ForumParser.search(page("/search/?q=$encoded"))
     }
 
-    private fun connect(pathOrUrl: String) = Jsoup.connect(safeForumUrl(pathOrUrl))
+    private fun connect(pathOrUrl: String, asGuest: Boolean = false) = Jsoup.connect(safeForumUrl(pathOrUrl))
         .userAgent("F650GSForum/0.7 (Android; native reader)")
         .header("Accept-Language", "pl-PL,pl;q=0.9,en;q=0.5")
         .timeout(15_000)
-        .apply { if (sessionCookies.isNotEmpty()) cookies(sessionCookies) }
+        .apply { if (!asGuest && sessionCookies.isNotEmpty()) cookies(sessionCookies) }
 
     private fun page(pathOrUrl: String) = connect(pathOrUrl).get()
 
@@ -413,5 +415,31 @@ class ForumRepository {
 
 /** Plain text as editor paragraphs: blank lines split paragraphs, single newlines become line breaks. */
 internal fun paragraphsHtml(text: String): String = if (text.isBlank()) "" else text.trim().split(Regex("\n{2,}")).joinToString("") { paragraph ->
-    "<p>" + forumSafeHtml(paragraph) { android.text.Html.escapeHtml(it) }.replace("\n", "<br>") + "</p>"
+    "<p>" + forumSafeHtml(paragraph) { linkedHtml(it) { run -> android.text.Html.escapeHtml(run) } }.replace("\n", "<br>") + "</p>"
+}
+
+private val WEB_ADDRESS = Regex("""(?i)\b(?:https?://|www\.)[^\s<>"]+""")
+
+/**
+ * Plain [text] with its web addresses as links, the markup the forum's editor gives a pasted address
+ * (the forum itself leaves a bare address as text). Trailing punctuation stays outside the link, and a
+ * closing bracket too unless the address opened one. [escape] escapes text for HTML.
+ */
+internal fun linkedHtml(text: String, escape: (String) -> String): String = buildString {
+    var from = 0
+    WEB_ADDRESS.findAll(text).forEach { match ->
+        var address = match.value
+        while (address.isNotEmpty()) {
+            val last = address.last()
+            val unbalanced = last == ')' && address.count { it == '(' } < address.count { it == ')' }
+            if (last in ".,;:!?'\"]}" || unbalanced) address = address.dropLast(1) else break
+        }
+        if (address.length <= 4) return@forEach
+        val start = match.range.first
+        append(escape(text.substring(from, start)))
+        val href = if (address.startsWith("www.", ignoreCase = true)) "http://$address" else address
+        append("<a href=\"").append(escape(href)).append("\" rel=\"external nofollow\">").append(escape(address)).append("</a>")
+        from = start + address.length
+    }
+    append(escape(text.substring(from)))
 }

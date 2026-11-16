@@ -92,6 +92,8 @@ data class ForumPost(
     val authorUrl: String = "",
     /** What a moderator may do with this post in a multi-post action ("merge", "delete", "hide"…); empty for members. */
     val modActions: List<String> = emptyList(),
+    /** Seen only by staff: "hidden" (hidden by a moderator), "unapproved" (waiting for approval), else empty. */
+    val modState: String = "",
 )
 
 /** One member who reacted to a post, from the forum's "who reacted" list; [reaction] is the reaction's image name ("like", "thanks"…). */
@@ -128,6 +130,8 @@ data class TopicPage(
     val replyForm: ReplyForm? = null,
     val moderation: ModerationForm? = null,
     val topicModeration: TopicModeration? = null,
+    /** The section the topic is in, empty when the page does not link it. */
+    val forumUrl: String = "",
 )
 
 /** The topic's multi-post moderation form (administrators and moderators): actions as value to label. */

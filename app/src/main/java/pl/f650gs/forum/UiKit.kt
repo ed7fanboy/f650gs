@@ -95,12 +95,19 @@ internal fun MainActivity.htmlText(html: String, color: Int): TextView {
     }
 }
 
-internal fun MainActivity.hero(title: String, subtitle: String): View = LinearLayout(this).apply {
+/** With [onSubtitle] the subtitle is a link (a topic's section), drawn as a pill with a bigger tap area. */
+internal fun MainActivity.hero(title: String, subtitle: String, onSubtitle: (() -> Unit)? = null): View = LinearLayout(this).apply {
     orientation = LinearLayout.VERTICAL
     setPadding(dp(18), dp(18), dp(18), dp(18))
     background = rounded(TEAL, 20)
     addView(label(title, 21f, WHITE, bold = true))
-    addView(label(subtitle, 13f, Color.rgb(209, 224, 219)), margin(top = 6))
+    if (onSubtitle == null) addView(label(subtitle, 13f, Color.rgb(209, 224, 219)), margin(top = 6))
+    else addView(label("📂  $subtitle  ›", 13f, WHITE, bold = true).apply {
+        setPadding(dp(12), dp(8), dp(12), dp(8))
+        background = rounded(Color.argb(46, 255, 255, 255), 16)
+        contentDescription = "Przejdź do działu $subtitle"
+        setOnClickListener { onSubtitle() }
+    }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
     layoutParams = margin(bottom = 22)
 }
 

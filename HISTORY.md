@@ -93,6 +93,18 @@
 - Moderating posts: a checkbox on each post the account may moderate; with posts ticked, a bar offers the actions all of them allow (Połącz, Ukryj/Odkryj, Usuń, Zatwierdź), with a confirmation before deleting or merging. Splitting stays on the forum page.
 - Moderating topics: "Moderuj temat…" under the title lists the forum's own staff menu with icons (Promuj, Podepnij, Ukryj, Zamknij, Przenieś, Połącz, Usuń, and their undo forms on a promoted, pinned, hidden or closed topic), plus "Na wysypisko", a one-tap move to Zaplecze → Wysypisko.
 - 0.20.1: likes as one split pill under each post, `[👍 │ N]`: the thumb likes or unlikes, the count opens the full list of who reacted (avatar, reaction, time; tap opens the profile), read from the forum's `?do=showReactionsComment` page. Replaces the names line that squeezed the buttons.
+- 0.20.2: reactions to one post are one notification card (likers' names combined); system notifications are dismissed when the app is opened; editing a post with a photo no longer crashes; merging posts sends the forum's second step (the combined post).
+
+## 0.21 (2026-11-17)
+
+- "Cytuj" opens the post as editable text in a window: trim it and only the rest is quoted ("Cytujesz fragment"); unchanged or "Cały wpis" quotes the whole post with its formatting.
+- Addresses typed or pasted into replies, topics and messages are sent as links (the forum leaves a bare address as text).
+- Reply box keeps focus when the keyboard opens: in conversations and the Chatbox typing went nowhere, and Gboard's emoji panel could not insert anything.
+- The section name under a topic's title is a link up to the section; from a topic opened in Ostatnie/Nieprzeczytane, Back from the section returns there.
+- On Ostatnie/Nieprzeczytane cards only the avatar, name and time open the profile; the rest of the strip opens the post.
+- Staff view: hidden and waiting-for-approval posts carry a "🚫 Ukryty" / "⏳ Do zatwierdzenia" badge and a dashed card.
+- Photo picker takes as many photos as the system allows (was 10).
+- Unread topics: titles without the forum's "first unread post" badge; background photo look-ups read as a guest, so they no longer mark topics read.
 
 ## Known limitations
 

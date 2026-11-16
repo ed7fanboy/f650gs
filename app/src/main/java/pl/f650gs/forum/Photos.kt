@@ -203,7 +203,8 @@ private fun MainActivity.thumbDrawable(source: Bitmap): Drawable {
 internal fun MainActivity.pickPhoto(target: EditText) {
     photoTarget = target
     val intent = if (android.os.Build.VERSION.SDK_INT >= 33) {
-        Intent(MediaStore.ACTION_PICK_IMAGES).putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, 10)
+        // As many as the system picker allows (uploads go one at a time, so the app sets no limit of its own).
+        Intent(MediaStore.ACTION_PICK_IMAGES).putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit())
     } else Intent(Intent.ACTION_GET_CONTENT).setType("image/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
     @Suppress("DEPRECATION")
     runCatching { startActivityForResult(intent, PHOTO_PICK_REQUEST) }

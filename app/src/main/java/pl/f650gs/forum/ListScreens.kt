@@ -306,7 +306,9 @@ internal fun MainActivity.activityCard(
             addView(heading, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
             if (item.authorUrl.isNotBlank() && currentScreen !is Screen.Profile) setOnClickListener { navigate(Screen.Profile(item.author, item.authorUrl)) }
         }
-        addView(author, LinearLayout.LayoutParams(0, -2, 1f))
+        // Only the avatar, name and time open the profile; the free space after them belongs to the card (opens the post).
+        addView(author, LinearLayout.LayoutParams(-2, -2))
+        addView(View(this@activityCard), LinearLayout.LayoutParams(0, 1, 1f))
         addView(starButton(item.url, item.title))
     }, margin(top = 8))
     if (item.context.isNotBlank()) card.addView(label(item.context, 12f, MUTED), margin(top = 5))

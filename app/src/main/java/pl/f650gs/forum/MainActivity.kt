@@ -888,7 +888,7 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun quote(index: Int) {
-            main.post { posts.getOrNull(index)?.let(::setQuote) }
+            main.post { posts.getOrNull(index)?.let(::chooseQuote) }
         }
 
         @JavascriptInterface

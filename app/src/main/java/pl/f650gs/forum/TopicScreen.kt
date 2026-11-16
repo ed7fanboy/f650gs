@@ -190,12 +190,15 @@ internal fun MainActivity.lastCommentUrl(url: String): String = runCatching {
 
 internal fun MainActivity.renderTopic(page: TopicPage) {
     topicPage = page
-    // Topics opened from a link have no title yet: take it from the loaded page.
-    (currentScreen as? Screen.Topic)?.takeIf { it.title.isBlank() }?.let { currentScreen = it.copy(title = page.title); updateChrome() }
+    // The header always shows the loaded page's own title, whatever title the opening link or list card carried.
+    (currentScreen as? Screen.Topic)?.takeIf { it.title != page.title && page.title != "Temat" }?.let { currentScreen = it.copy(title = page.title); updateChrome() }
     val scrollToEnd = scrollToEndAfterLoad
     scrollToEndAfterLoad = false
+    // Opening the topic is what marks it read on the forum: bring the Unread tab's count up to date now.
+    if (signedIn) refreshCounters(force = true)
     content.removeAllViews()
-    content.addView(hero(page.title, page.forum.ifBlank { "Forum F650GS" }))
+    val section = page.forumUrl.takeIf { it.isNotBlank() && page.forum.isNotBlank() }
+    content.addView(hero(page.title, page.forum.ifBlank { "Forum F650GS" }, section?.let { url -> { openTopicSection(page.forum, url) } }))
     if (signedIn && page.topicModeration != null) content.addView(row {
         setPadding(0, 0, 0, dp(4))
         addView(pill("Moderuj temat…", TEAL_LIGHT, LINK) { chooseTopicAction(page) })
@@ -486,7 +489,7 @@ internal fun MainActivity.openTopicPage(url: String, toEnd: Boolean = false) {
 internal fun MainActivity.scrollTopicToEnd() {
     val page = topicPage
     if (page != null && page.pager.lastUrl.isNotBlank()) openTopicPage(page.pager.lastUrl, toEnd = true)
-    else scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+    else scrollListToEnd()
 }
 
 /** [focusPostId] > 0 scrolls to that post once laid out; -1 scrolls to the last post. */
@@ -548,6 +551,10 @@ internal fun MainActivity.topicPostsView(
         append(if (darkMode) "#36484b" else "#cbd7df")
         append(";padding:5px}hr{border:0;border-top:1px solid ").append(if (darkMode) "#36484b" else "#dbe4e8").append("}")
         append("a.who{display:contents;color:inherit;text-decoration:none}")
+        append(".modState{flex:none;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:800;white-space:nowrap;background:")
+        append(if (darkMode) "#4a2f22" else "#fdebd9").append(";color:").append(if (darkMode) "#f3c7a6" else "#9a4a12").append("}")
+        // Hidden posts stay readable for staff but look set apart.
+        append(".post.isHidden{border-style:dashed;opacity:.8}")
         append(".modBox{flex:none;width:22px;height:22px;margin:0 0 0 4px;accent-color:").append(if (darkMode) "#2f5a78" else "#0066b1").append("}")
         append(".avatar{position:relative;flex:none;width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;overflow:hidden}")
         append(".avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;max-height:none!important;border-radius:0!important}")
@@ -562,7 +569,7 @@ internal fun MainActivity.topicPostsView(
         append("}.likePill .likeButton{border:0;border-radius:0}.likePill .likeCount{border-left:1px solid ").append(if (darkMode) "#42647a" else "#a8cce5").append("}")
         append("</style></head><body>")
         posts.forEachIndexed { index, post ->
-            append("<article class=\"post\" id=\"c").append(post.id).append("\"><header class=\"postHeader\">")
+            append("<article class=\"post").append(if (post.modState.isNotEmpty()) " isHidden" else "").append("\" id=\"c").append(post.id).append("\"><header class=\"postHeader\">")
             if (post.authorUrl.isNotBlank()) append("<a class=\"who\" href=\"").append(android.text.Html.escapeHtml(post.authorUrl)).append("\">")
             append(postAvatarHtml(post)).append("<span>")
             append("<b style=\"color:").append(cssColor(avatarColors(post.author).second)).append("\">")
@@ -570,6 +577,10 @@ internal fun MainActivity.topicPostsView(
             if (post.date.isNotBlank()) append(" · ").append(android.text.Html.escapeHtml(post.date))
             append("</span>")
             if (post.authorUrl.isNotBlank()) append("</a>")
+            when (post.modState) {
+                "hidden" -> append("<span class=\"modState\">🚫 Ukryty</span>")
+                "unapproved" -> append("<span class=\"modState\">⏳ Do zatwierdzenia</span>")
+            }
             append("<span class=\"postNumber\">#").append(firstNumber + index).append("</span>")
             if (moderate && post.modActions.isNotEmpty()) {
                 append("<input type=\"checkbox\" class=\"modBox\" aria-label=\"Zaznacz wpis\" onchange=\"NativePosts.select(")
@@ -730,4 +741,17 @@ internal fun MainActivity.routePostLink(uri: Uri) {
     } else {
         openBrowser(uri.toString())
     }
+}
+
+/**
+ * Up to the topic's section: back when the topic was opened from that section, otherwise the section takes the
+ * topic's place, so Back from there returns to where the topic was opened from (Home, Unread…).
+ */
+internal fun MainActivity.openTopicSection(title: String, url: String) {
+    fun key(u: String) = u.substringBefore('?').substringBefore('#').trimEnd('/')
+    val previous = history.lastOrNull()
+    if (previous is Screen.Forum && key(previous.url) == key(url)) return goBack()
+    currentScreen = Screen.Forum(title, url)
+    updateChrome()
+    renderCurrent()
 }
