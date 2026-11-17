@@ -248,9 +248,9 @@ class ForumParserTest {
     }
 
     @Test fun profileHeaderStatsFieldsAndActivity() {
-        val url = "http://f650gs.pl/profile/911-czlonek-911/"
+        val url = "http://f650gs.pl/profile/904-czlonek-904/"
         val profile = ForumParser.profile(page("profile_in.html", url), url)
-        assertEquals("911", profile.id)
+        assertEquals("904", profile.id)
         assertEquals("Członek 10", profile.name)
         assertTrue(profile.photo.startsWith("http"))
         assertTrue(profile.stats.any { it.first == "Reputacja" })

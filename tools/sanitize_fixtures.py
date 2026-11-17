@@ -4,7 +4,8 @@ member line. Private-message pages: every visible text in the main area and ever
 replaced, profile slugs rewritten. Pages with members' content (MEMBER): names become consistent
 pseudonyms across all pages ("Członek N", the signed-in member "Ja"), topic titles "Temat N",
 post/snippet/signature/profile-field text "Tekst N", member ids, topic slugs and uploaded files
-rewritten; the forum's own structure (sections, labels, pagers, dates, counts) is kept."""
+rewritten (also URL-encoded profile links and bare member ids); profile stats, reputation and
+leaderboard dates faked; the forum's own structure (sections, labels, pagers, dates, counts) is kept."""
 import re, sys, pathlib
 from lxml import html as LH
 
@@ -65,10 +66,18 @@ def pseudonym(name):
 
 def rewrite_ids(text):
     def profile(m):
-        if m.group(1) not in IDS:
-            IDS[m.group(1)] = "900" if m.group(2) and m.group(2) in SELF_SLUGS else str(901 + len(IDS))
-        return f"/profile/{IDS[m.group(1)]}-czlonek-{IDS[m.group(1)]}"
-    text = re.sub(r"/profile/(\d+)-([^/\"'?#\s]+)", profile, text)
+        sep1, sep2, mid, slug = m.groups()
+        if mid not in IDS:
+            IDS[mid] = "900" if slug in SELF_SLUGS else str(901 + len(IDS))
+        return f"{sep1}profile{sep2}{IDS[mid]}-czlonek-{IDS[mid]}"
+    # Plain and URL-encoded (referrer=...%252Fprofile%252F<id>-<slug>) profile links.
+    text = re.sub(r"(/|%2F|%252F)profile(/|%2F|%252F)(\d+)-([^/\"'?#\s%&]+)", profile, text, flags=re.I)
+    def member_id(m):
+        IDS.setdefault(m.group(2), str(901 + len(IDS)))
+        return m.group(1) + IDS[m.group(2)]
+    # Bare member ids: follow buttons and "send a message" links.
+    text = re.sub(r"(follow_area=member&(?:amp;)?follow_id=|data-followarea=\"member\" data-followid=\"|messenger/compose/\?to=)(\d+)",
+                  member_id, text)
     text = re.sub(r"memberID:\s*(\d+)", lambda m: "memberID: " + ("0" if m.group(1) == "0" else "900"), text)
     def topic(m):
         TOPICS.setdefault(m.group(1), len(TOPICS) + 1)
@@ -84,6 +93,24 @@ def rewrite_ids(text):
         tags.setdefault(m.group(1), len(tags) + 1)
         return f"/tags/tag-{tags[m.group(1)]}/"
     return re.sub(r"/tags/([^/\"'?#\s]+)/", tag, text)
+
+
+NUMBER = re.compile(r"\d(?:[\d\s\u00a0\u202f.,]*\d)?")
+
+
+def fake_counts(el):
+    """Counters and dates inside [el] (post count, reputation, join date) become fixed fake values:
+    real totals next to a pseudonym are enough to find the member on the forum."""
+    for node in el.iter():
+        if not isinstance(node.tag, str):
+            continue
+        if node.tag == "time":
+            node.set("datetime", "2015-01-01T10:00:00Z"); node.set("title", "01.01.2015 11:00")
+            node.text = "1 Styczeń 2015"
+        elif node.text:
+            node.text = NUMBER.sub("12", node.text)
+        if node is not el and node.tail:
+            node.tail = NUMBER.sub("12", node.tail)
 
 
 def blank(el, label, counter):
@@ -144,6 +171,15 @@ def anonymise(doc, counter):
                 a.set("href", "https://example.com/")
     for el in doc.xpath("//*[@data-quotedata]"):
         el.set("data-quotedata", "{}")
+    # Profile header stats, reputation score and the reputation badges next to authors.
+    for el in doc.xpath("//header//li[h4[contains(@class, 'ipsType_minorHeading')]]"
+                        " | //*[contains(@class, 'cProfileRepScore_points')] | //*[contains(@class, 'ipsRepBadge')]"):
+        fake_counts(el)
+    for a in doc.xpath("//a[contains(@href, '/leaderboard/')]"):
+        a.set("href", re.sub(r"custom_date_(start|end)=\d+", r"custom_date_\1=0", a.get("href")))
+        for node in a.iter():
+            if isinstance(node.tag, str) and node.text:
+                node.text = re.sub(r"last won the day on .*", "last won the day on 1 Styczeń", node.text)
     # "Who reacted" lists are JSON with escaped names; the app does not read them.
     for el in doc.xpath("//*[@data-ipstooltip-label]"):
         el.set("data-ipstooltip-label", "[]")
