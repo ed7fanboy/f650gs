@@ -16,26 +16,36 @@ import java.net.URL
  * New versions. The app is installed from the landing page, not a store, so once a day it reads
  * version.json next to the APK there and, when that lists a newer version, offers to install it.
  * The downloaded APK must match the SHA-256 in version.json before Android's installer gets it.
+ * version.json may also name a minVersionCode: an installed version below it is no longer safe to use (security
+ * fixes), so the offer cannot be dismissed and is checked on every start until the update is in.
  */
 
 internal const val UPDATE_INFO_URL = "https://ed7fanboy.github.io/f650gs/version.json"
 internal const val ACTION_INSTALL_STATUS = "pl.f650gs.forum.INSTALL_STATUS"
 private const val KEY_UPDATE_CHECKED = "update_checked_at"
+private const val KEY_MIN_VERSION = "update_min_version"
+private const val KEY_UPDATE_OFFERED = "update_offered_at"
 private const val KEY_INSTALL_NONCE = "install_nonce"
 private const val EXTRA_INSTALL_NONCE = "pl.f650gs.forum.INSTALL_NONCE"
 private const val DAY_MS = 24L * 60 * 60 * 1000
+private const val HOUR_MS = 60L * 60 * 1000
 
 /** What version.json says: the newest version and where its APK is. */
-data class UpdateInfo(val versionCode: Long, val versionName: String, val apkUrl: String, val sha256: String)
+data class UpdateInfo(val versionCode: Long, val versionName: String, val apkUrl: String, val sha256: String,
+                      val minVersionCode: Long = 0)
 
 /** Reads version.json; null unless it has every field and the APK comes from the landing page. */
 internal fun parseUpdateInfo(json: String): UpdateInfo? = runCatching {
     val data = org.json.JSONObject(json)
-    UpdateInfo(data.getLong("versionCode"), data.getString("versionName"), data.getString("apk"), data.getString("sha256").lowercase())
+    UpdateInfo(data.getLong("versionCode"), data.getString("versionName"), data.getString("apk"), data.getString("sha256").lowercase(),
+        data.optLong("minVersionCode", 0))
 }.getOrNull()?.takeIf { it.apkUrl.startsWith("https://ed7fanboy.github.io/f650gs/") && Regex("[0-9a-f]{64}").matches(it.sha256) }
 
 // An update waiting for the "install unknown apps" permission, offered again once it is granted.
 private var awaitingInstallPermission: UpdateInfo? = null
+// A check is under way, or the offer is on screen: onResume must not start a second one.
+private var updateBusy = false
+private var updateDialog: AlertDialog? = null
 
 internal fun MainActivity.installedVersionCode(): Long {
     val info = packageManager.getPackageInfo(packageName, 0)
@@ -43,23 +53,35 @@ internal fun MainActivity.installedVersionCode(): Long {
     return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
 }
 
-/** Once a day (or now, when [manual]), asks the landing page for a newer version. */
+/** Asks the landing page for a newer version: at most once an hour, at once when [manual] or below the minimum. */
 internal fun MainActivity.checkForUpdate(manual: Boolean = false) {
     awaitingInstallPermission?.let { pending ->
         if (Build.VERSION.SDK_INT < 26 || packageManager.canRequestPackageInstalls()) { awaitingInstallPermission = null; downloadUpdate(pending) }
         return
     }
+    if (updateBusy || updateDialog?.isShowing == true) return
     val prefs = getSharedPreferences(MainActivity.PREFS, android.content.Context.MODE_PRIVATE)
     val now = System.currentTimeMillis()
-    if (!manual && now - prefs.getLong(KEY_UPDATE_CHECKED, 0) < DAY_MS) return
+    val required = prefs.getLong(KEY_MIN_VERSION, 0) > installedVersionCode()
+    // version.json is read at most once an hour (so a new minimum takes effect within the hour); the optional offer is
+    // shown at most once a day
+    if (!manual && !required && now - prefs.getLong(KEY_UPDATE_CHECKED, 0) < HOUR_MS) return
     prefs.edit().putLong(KEY_UPDATE_CHECKED, now).apply()
+    updateBusy = true
     io.execute {
         val info = runCatching { parseUpdateInfo(readText(UPDATE_INFO_URL)) }.getOrNull()
         main.post {
+            updateBusy = false
+            if (info != null) prefs.edit().putLong(KEY_MIN_VERSION, info.minVersionCode).apply()
             val current = packageManager.getPackageInfo(packageName, 0).versionName
             when {
                 info == null -> if (manual) toast("Nie udało się sprawdzić aktualizacji.")
-                info.versionCode > installedVersionCode() -> offerUpdate(info, current.orEmpty())
+                info.minVersionCode > installedVersionCode() && info.versionCode > installedVersionCode() ->
+                    offerUpdate(info, current.orEmpty(), required = true)
+                info.versionCode > installedVersionCode() && (manual || now - prefs.getLong(KEY_UPDATE_OFFERED, 0) >= DAY_MS) -> {
+                    prefs.edit().putLong(KEY_UPDATE_OFFERED, now).apply()
+                    offerUpdate(info, current.orEmpty(), required = false)
+                }
                 manual -> toast("Masz najnowszą wersję ($current).")
             }
         }
@@ -79,15 +101,24 @@ private fun readText(url: String): String {
     }
 }
 
-private fun MainActivity.offerUpdate(info: UpdateInfo, current: String) {
-    AlertDialog.Builder(this)
-        .setTitle("Nowa wersja ${info.versionName}")
-        .setMessage("Masz wersję $current. Zainstalować nową? Ustawienia i logowanie zostaną.\n\nCo nowego: ed7fanboy.github.io/f650gs")
+private fun MainActivity.offerUpdate(info: UpdateInfo, current: String, required: Boolean) {
+    if (isFinishing || isDestroyed) return
+    val builder = AlertDialog.Builder(this)
+        .setTitle(if (required) "Wymagana aktualizacja" else "Nowa wersja ${info.versionName}")
+        .setMessage(
+            if (required) "Wersja $current ma błędy bezpieczeństwa i nie jest już obsługiwana. Zainstaluj wersję ${info.versionName}, " +
+                "żeby dalej korzystać z aplikacji. Ustawienia i logowanie zostaną.\n\nCo nowego: ed7fanboy.github.io/f650gs"
+            else "Masz wersję $current. Zainstalować nową? Ustawienia i logowanie zostaną.\n\nCo nowego: ed7fanboy.github.io/f650gs")
         .setPositiveButton("Instaluj") { _, _ ->
             if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) askInstallPermission(info) else downloadUpdate(info)
         }
-        .setNegativeButton("Anuluj", null)
-        .show()
+    if (required) {
+        // No way past it: Back and taps outside do nothing, the only other choice closes the app
+        builder.setCancelable(false).setNegativeButton("Zamknij aplikację") { _, _ -> finishAndRemoveTask() }
+    } else {
+        builder.setNegativeButton("Anuluj", null)
+    }
+    updateDialog = builder.show()
 }
 
 /** Android lets an app install updates only after the member allows it, once, in the system settings. */

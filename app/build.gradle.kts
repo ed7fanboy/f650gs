@@ -10,8 +10,8 @@ android {
         applicationId = "pl.f650gs.forum"
         minSdk = 24
         targetSdk = 37
-        versionCode = 52
-        versionName = "0.21.1"
+        versionCode = 53
+        versionName = "0.21.2"
         // `gradle assembleDebug -Pdev` builds a side-by-side test copy ("f650gs.pl dev") that leaves the installed app alone.
         if (project.hasProperty("dev")) {
             applicationIdSuffix = ".dev"

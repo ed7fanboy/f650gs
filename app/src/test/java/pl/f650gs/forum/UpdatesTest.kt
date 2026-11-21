@@ -12,6 +12,12 @@ class UpdatesTest {
         assertEquals(UpdateInfo(43, "0.18.0", "https://ed7fanboy.github.io/f650gs/f650gs.apk", sha), info)
     }
 
+    @Test fun readsMinimumVersion() {
+        val info = parseUpdateInfo("""{"versionCode":53,"versionName":"0.21.2","apk":"https://ed7fanboy.github.io/f650gs/f650gs.apk","sha256":"$sha","minVersionCode":52}""")
+        assertEquals(52L, info?.minVersionCode)
+        assertEquals(0L, parseUpdateInfo("""{"versionCode":43,"versionName":"0.18.0","apk":"https://ed7fanboy.github.io/f650gs/f650gs.apk","sha256":"$sha"}""")?.minVersionCode)
+    }
+
     @Test fun refusesApksFromElsewhereOrWithoutChecksum() {
         assertNull(parseUpdateInfo("""{"versionCode":43,"versionName":"0.18.0","apk":"https://example.com/f650gs.apk","sha256":"$sha"}"""))
         assertNull(parseUpdateInfo("""{"versionCode":43,"versionName":"0.18.0","apk":"https://ed7fanboy.github.io/f650gs/f650gs.apk","sha256":"abc"}"""))

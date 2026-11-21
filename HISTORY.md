@@ -107,6 +107,7 @@
 - Unread topics: titles without the forum's "first unread post" badge; background photo look-ups read as a guest, so they no longer mark topics read.
 - Films uploaded to posts show as a "▶ Odtwórz film" card that opens the system player (were an empty post).
 - Security: post HTML goes through an allowlist; forum cookies and redirects stay on f650gs.pl; the update installer only accepts its own session; image and avatar downloads are size-capped.
+- Required updates: when the landing page marks a version as no longer safe, the update offer cannot be dismissed and is shown on every start (from 0.21.2 on).
 
 ## Known limitations
 
