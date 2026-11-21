@@ -302,3 +302,15 @@ internal fun MainActivity.stripSignatureHtml(html: String, always: Boolean = fal
     }
     return body.html()
 }
+
+/** The whole stream, or null when it is longer than [limit] bytes (a huge file must not run the app out of memory). */
+internal fun java.io.InputStream.readAtMost(limit: Int): ByteArray? {
+    val out = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(64 * 1024)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) return out.toByteArray()
+        if (out.size() + read > limit) return null
+        out.write(buffer, 0, read)
+    }
+}

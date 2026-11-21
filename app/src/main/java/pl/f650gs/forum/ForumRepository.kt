@@ -6,6 +6,8 @@ import pl.f650gs.forum.ForumParser.safeForumUrl
 
 /** Talks to the forum over HTTP with the app's session cookies; [ForumParser] reads the pages. */
 class ForumRepository {
+    private companion object { const val MAX_REDIRECTS = 10 }
+
     @Volatile private var sessionCookies: Map<String, String> = emptyMap()
 
     fun updateSessionCookies(cookieHeader: String?) {
@@ -52,7 +54,7 @@ class ForumRepository {
             if (current.statusCode() !in 300..399 || next.isNullOrBlank()) { response = current; break }
             location = safeForumUrl(java.net.URI(location).resolve(next).toString())
         }
-        val document = (response ?: connect(location, asGuest).execute()).parse()
+        val document = (response ?: connect(location, asGuest).fetch()).parse()
         return ForumParser.topic(document, location.substringBefore('#'), focus)
     }
 
@@ -67,7 +69,7 @@ class ForumRepository {
     /** Members whose name starts with [query] (the forum needs at least 3 characters). */
     fun findMembers(query: String): List<MemberHit> {
         val encoded = java.net.URLEncoder.encode(query, Charsets.UTF_8.name())
-        return ForumParser.members(ajax("/index.php?app=core&module=system&controller=ajax&do=findMember&input=$encoded").execute().body())
+        return ForumParser.members(ajax("/index.php?app=core&module=system&controller=ajax&do=findMember&input=$encoded").fetch().body())
     }
 
     /** The forum's "new conversation" form addressed to member [memberId]. */
@@ -81,7 +83,7 @@ class ForumRepository {
             .data("messenger_to", compose.recipient)
             .data("messenger_title", forumSafeText(title).trim())
             .data(compose.form.editor, paragraphsHtml(text))
-            .execute()
+            .fetch()
         val url = response.url().toString()
         if (Regex("""/messenger/\d+""").containsMatchIn(url)) return safeForumUrl(url)
         error(ForumParser.formError(response.parse(), "Forum nie przyjęło wiadomości."))
@@ -99,7 +101,7 @@ class ForumRepository {
             .data(form.form.fields)
             .data(form.titleField, forumSafeText(title).trim())
             .data(form.form.editor, bodyHtml)
-            .execute()
+            .fetch()
         val url = response.url().toString()
         if (Regex("""/topic/\d+""").containsMatchIn(url)) return safeForumUrl(url)
         error(ForumParser.formError(response.parse(), "Forum nie przyjęło tematu."))
@@ -107,7 +109,7 @@ class ForumRepository {
 
     fun logout(url: String) {
         require(url.contains("logout")) { "Nieprawidłowy adres wylogowania." }
-        connect(url).ignoreContentType(true).execute()
+        connect(url).ignoreContentType(true).fetch()
     }
 
     /** The forum's edit form for a post, or null when this account may not edit it. */
@@ -131,7 +133,7 @@ class ForumRepository {
      * (to be handed to the WebView). Throws with the forum's message on failure.
      */
     fun login(user: String, password: String, remember: Boolean): Map<String, String> {
-        val form = connect("/login/").execute()
+        val form = connect("/login/").fetch()
         val cookies = form.cookies().toMutableMap()
         val csrf = ForumParser.loginCsrf(form.parse()) ?: error("Forum nie udostępnia formularza logowania.")
         val response = Jsoup.connect("http://f650gs.pl/login/")
@@ -168,7 +170,7 @@ class ForumRepository {
             .method(org.jsoup.Connection.Method.POST)
             .data(form.hidden)
             .apply { on.forEach { data(it.name, it.value) } }
-            .execute()
+            .fetch()
         val problem = ForumParser.pageErrors(response.parse())
         if (problem.isNotBlank()) error(problem)
     }
@@ -183,7 +185,7 @@ class ForumRepository {
     fun moderate(form: ModerationForm, action: String, postIds: Collection<Long>) {
         val fields = form.hidden + ("modaction" to action) + postIds.associate { "multimod[$it]" to "1" }
         fun send(url: String, data: Map<String, String>) =
-            connect(url).method(org.jsoup.Connection.Method.POST).data(data).execute().parse()
+            connect(url).method(org.jsoup.Connection.Method.POST).data(data).fetch().parse()
         var document = send(form.action, fields)
         ForumParser.confirmForm(document)?.let { confirm ->
             document = send(confirm.action, fields + confirm.fields + ("wasConfirmed" to "1"))
@@ -191,7 +193,7 @@ class ForumRepository {
         ForumParser.mergeForm(document)?.let { merge ->
             // Joining posts with photos takes the forum longer than the usual 15 seconds.
             document = connect(merge.action).method(org.jsoup.Connection.Method.POST).timeout(60_000)
-                .data(fields + merge.fields).data(merge.editor, merge.content).execute().parse()
+                .data(fields + merge.fields).data(merge.editor, merge.content).fetch().parse()
         }
         val problem = ForumParser.pageErrors(document)
         if (problem.isNotBlank()) error(problem)
@@ -205,7 +207,7 @@ class ForumRepository {
 
     fun moveTopic(form: MoveForm, targetId: String) {
         val fields = form.hidden + mapOf("move_to" to targetId, "move_keep_link" to "0", "returnto" to "item")
-        val document = connect(form.action).method(org.jsoup.Connection.Method.POST).data(fields).execute().parse()
+        val document = connect(form.action).method(org.jsoup.Connection.Method.POST).data(fields).fetch().parse()
         val problem = ForumParser.pageErrors(document)
         if (problem.isNotBlank()) error(problem)
         if (ForumParser.moveForm(document) != null) error("Forum nie przeniosło tematu.")
@@ -214,7 +216,7 @@ class ForumRepository {
     /** Fills in the staff dialog at [url] (hide reason, merge address) with [values] and sends it. */
     fun sendTopicForm(url: String, values: Map<String, String>) {
         val form = ForumParser.dialogForm(page(url), values.keys) ?: error("Forum nie pokazało formularza.")
-        val document = connect(form.action).method(org.jsoup.Connection.Method.POST).data(form.fields + values).execute().parse()
+        val document = connect(form.action).method(org.jsoup.Connection.Method.POST).data(form.fields + values).fetch().parse()
         val problem = ForumParser.pageErrors(document)
         if (problem.isNotBlank()) error(problem)
         if (ForumParser.dialogForm(document, values.keys) != null) error("Forum nie przyjęło formularza.")
@@ -222,7 +224,7 @@ class ForumRepository {
 
     /** The page at [url] drawn natively, or null when the app should show the web page instead. */
     fun nativePage(url: String): NativePage? {
-        val response = connect(url).execute()
+        val response = connect(url).fetch()
         return ForumParser.nativePage(response.parse(), safeForumUrl(response.url().toString()))?.withCookies(response.cookies())
     }
 
@@ -233,7 +235,7 @@ class ForumRepository {
             .method(org.jsoup.Connection.Method.POST)
             .data(form.hidden)
             .apply { values.forEach { (name, value) -> data(name, value) } }
-            .execute()
+            .fetch()
         val cookies = response.cookies()
         // A new password or e-mail renews the session cookies.
         if (sessionCookies.isNotEmpty() && cookies.isNotEmpty()) sessionCookies = sessionCookies + cookies
@@ -249,12 +251,12 @@ class ForumRepository {
      */
     fun forumAction(url: String) {
         require(url.contains("csrfKey=")) { "Nieprawidłowy adres akcji." }
-        val document = connect(url).ignoreContentType(true).execute().parse()
+        val document = connect(url).ignoreContentType(true).fetch().parse()
         val confirm = ForumParser.confirmForm(document) ?: return
         val answer = connect(confirm.action)
             .method(org.jsoup.Connection.Method.POST)
             .data(confirm.fields)
-            .execute()
+            .fetch()
             .parse()
         if (ForumParser.confirmForm(answer) != null) error("Forum nie potwierdziło akcji.")
     }
@@ -269,7 +271,7 @@ class ForumRepository {
             .userAgent("F650GSForum/0.7 (Android; native reader)")
             .header("Accept-Language", "pl-PL,pl;q=0.9,en;q=0.5")
             .timeout(15_000)
-            .execute()
+            .fetch()
         val form = ForumParser.signUpForm(response.parse()) ?: error("Forum nie udostępnia formularza rejestracji.")
         return form.copy(cookies = response.cookies())
     }
@@ -284,7 +286,7 @@ class ForumRepository {
             .method(org.jsoup.Connection.Method.POST)
             .data(form.hidden)
             .data(values)
-            .execute()
+            .fetch()
         val cookies = form.cookies + response.cookies()
         val document = response.parse()
         ForumParser.signUpForm(document)?.let { again ->
@@ -314,7 +316,7 @@ class ForumRepository {
             .method(org.jsoup.Connection.Method.POST)
             .data(form.fields)
             .data(form.editor, html)
-            .execute()
+            .fetch()
         // Administrators' header notices are not errors; taking them for a failed reply made the same post go out twice.
         val problem = ForumParser.pageErrors(response.parse())
         if (problem.isNotBlank()) error(problem)
@@ -336,7 +338,7 @@ class ForumRepository {
         val likers = mutableListOf<Liker>()
         var url = safeForumUrl(topicUrl).substringBefore('#').substringBefore('?') + "?do=showReactionsComment&comment=$postId"
         repeat(10) {
-            val (found, next) = ForumParser.likers(ajax(url).get())
+            val (found, next) = ForumParser.likers(ajax(url).fetch().parse())
             likers += found
             if (next.isBlank() || next == url) return likers
             url = next
@@ -347,7 +349,7 @@ class ForumRepository {
     /** Sends a reaction (or its removal) the same way the forum's own JavaScript does. */
     fun react(actionUrl: String) {
         require(actionUrl.contains("do=reactComment") || actionUrl.contains("do=unreactComment")) { "Nieprawidłowa akcja polubienia." }
-        ajax(actionUrl).execute()
+        ajax(actionUrl).fetch()
     }
 
     /**
@@ -356,7 +358,7 @@ class ForumRepository {
      */
     fun chatMessages(lastId: Long, csrfKey: String, older: Boolean = false): ChatBatch {
         val body = ajax("/?app=bimchatbox&module=chatbox&controller=chatbox&do=getMessages&lastID=$lastId&loadMoreMode=${if (older) 1 else 0}&csrfKey=$csrfKey")
-            .execute().body()
+            .fetch().body()
         return ForumParser.chatBatch(body, lastId)
     }
 
@@ -376,7 +378,7 @@ class ForumRepository {
             .method(org.jsoup.Connection.Method.POST)
             .data("txt", encoded)
             .data("csrfKey", csrfKey)
-            .execute().body()
+            .fetch().body()
         val json = runCatching { org.json.JSONObject(body) }.getOrNull()
         if (json?.optString("type") == "error") error(json.optString("message").ifBlank { "Nie udało się wysłać wiadomości." })
     }
@@ -393,7 +395,34 @@ class ForumRepository {
         .timeout(15_000)
         .apply { if (!asGuest && sessionCookies.isNotEmpty()) cookies(sessionCookies) }
 
-    private fun page(pathOrUrl: String) = connect(pathOrUrl).get()
+    private fun page(pathOrUrl: String) = connect(pathOrUrl).fetch().parse()
+
+    /**
+     * Runs the request with redirects followed by hand and only within the forum. Jsoup's own redirects send the
+     * session cookies to whatever host a Location header names; a redirect off the forum ends with an error.
+     * Like a browser, 301/302/303 continue as a GET without the form data; 307/308 keep the method.
+     */
+    private fun org.jsoup.Connection.fetch(): org.jsoup.Connection.Response {
+        followRedirects(false)
+        var response = execute()
+        repeat(MAX_REDIRECTS) {
+            if (response.statusCode() !in 300..399) return response
+            val next = response.header("Location")?.trim()?.takeIf { it.isNotEmpty() } ?: return response
+            val target = runCatching { java.net.URI(response.url().toString()).resolve(next.replace(" ", "%20")) }.getOrNull()
+                ?: error("Nieprawidłowe przekierowanie forum.")
+            if (!ForumParser.isForumHost(target.host)) error("Forum przekierowało poza f650gs.pl (${target.host}).")
+            if (response.statusCode() !in setOf(307, 308)) {
+                request().method(org.jsoup.Connection.Method.GET)
+                request().data().clear()
+                request().requestBody(null)
+                request().removeHeader("Content-Type")
+            }
+            cookies(response.cookies())
+            url(safeForumUrl(target.toString()))
+            response = execute()
+        }
+        error("Forum przekierowuje w kółko.")
+    }
 
 
 

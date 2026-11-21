@@ -142,13 +142,17 @@ object ForumParser {
     }
 
     fun safePostHtml(body: Element): String {
+        // Relative addresses resolve against the forum page only: a <base href> anywhere on the page (even inside a
+        // post) changes Jsoup's base URI, which would send every relative link and photo of the page elsewhere.
+        val base = body.baseUri().takeIf { uri -> isForumHost(runCatching { java.net.URI(uri).host }.getOrNull()) } ?: "http://f650gs.pl/"
+        body.select("base").remove()
         linkTapatalkMentions(body)
         // IPS commonly renders YouTube embeds as iframes. We don't load remote
         // embeds inside the native post reader, but preserve a safe link to the
         // video so the post doesn't appear to have lost it entirely.
         body.select("iframe[src],iframe[data-src]").toList().forEach { iframe ->
             val rawSource = iframe.attr("src").ifBlank { iframe.attr("data-src") }.trim()
-            val resolved = runCatching { java.net.URI(body.baseUri()).resolve(rawSource) }.getOrNull()
+            val resolved = runCatching { java.net.URI(base).resolve(rawSource) }.getOrNull()
             val host = resolved?.host?.lowercase()?.removePrefix("www.")
             val path = resolved?.path.orEmpty()
             val isYoutube = host == "youtube.com" || host == "youtube-nocookie.com" || host == "youtu.be"
@@ -163,7 +167,7 @@ object ForumParser {
                         (resolved.rawQuery?.let { "?$it" } ?: "")
                 }
                 val id = Regex("""(?:[?&]v=|youtu\.be/|/embed/|/shorts/|/live/)([A-Za-z0-9_-]{11})""").find(videoUrl + " " + resolved)?.groupValues?.get(1)
-                val link = Element(org.jsoup.parser.Tag.valueOf("a"), body.baseUri())
+                val link = Element(org.jsoup.parser.Tag.valueOf("a"), base)
                     .attr("href", videoUrl)
                     .addClass("forumYoutubeLink")
                 // A card with the film's thumbnail and title (the forum keeps it in the iframe, or the page fetches it).
@@ -179,6 +183,23 @@ object ForumParser {
             } else {
                 iframe.remove()
             }
+        }
+        // Uploaded films (IPS `<video><source src=…mp4>`): a card that opens the file in the phone's video player,
+        // otherwise a post holding only a film shows up empty.
+        body.select("video").toList().forEach { video ->
+            val rawSource = video.selectFirst("source[src]")?.attr("src").orEmpty().ifBlank { video.attr("src") }.trim()
+            val resolved = runCatching { java.net.URI(base).resolve(rawSource) }.getOrNull()
+            if (rawSource.isBlank() || resolved?.scheme?.lowercase() !in setOf("http", "https")) {
+                video.remove()
+                return@forEach
+            }
+            val name = video.selectFirst("a")?.text()?.trim().orEmpty()
+            val link = Element(org.jsoup.parser.Tag.valueOf("a"), base)
+                .attr("href", resolved.toString())
+                .addClass("forumYoutubeLink")
+                .addClass("forumVideoLink")
+            link.appendElement("span").addClass("forumYoutubeTitle").text(if (name.isBlank()) "▶ Odtwórz film" else "▶ Odtwórz film: $name")
+            video.replaceWith(link)
         }
         body.select("script,style,iframe,object,embed,form,input,button,video,audio,source,svg,math,canvas").remove()
         // The forum double-escapes "&" in link texts that are bare addresses, so they read "&amp;".
@@ -201,7 +222,7 @@ object ForumParser {
                     element.remove()
                     return@forEach
                 }
-                val resolved = runCatching { java.net.URI(body.baseUri()).resolve(rawSource).toString() }.getOrDefault("")
+                val resolved = runCatching { java.net.URI(base).resolve(rawSource).toString() }.getOrDefault("")
                 val scheme = runCatching { java.net.URI(resolved).scheme?.lowercase() }.getOrNull()
                 if (scheme == "http" || scheme == "https" || resolved.startsWith("data:image/")) {
                     element.attr("src", resolved)
@@ -217,8 +238,25 @@ object ForumParser {
                 element.removeAttr("target")
             }
         }
-        return body.html()
+        // Last, an allowlist: only these tags and attributes reach the page, which runs JavaScript with the forum's
+        // origin and the NativePosts bridge. The steps above shape the post; this one is what makes it safe even
+        // if the forum ever lets something odd through (e.g. <area href="javascript:…">, <meta http-equiv>).
+        return Jsoup.clean(body.html(), base, POST_SAFELIST)
     }
+
+    /** Tags and attributes a post may keep (posts, quotes sent back to the forum, the app's own cards). */
+    private val POST_SAFELIST: org.jsoup.safety.Safelist = org.jsoup.safety.Safelist.relaxed()
+        .addTags("hr", "s", "del", "ins", "mark", "abbr", "figure", "figcaption", "details", "summary", "font", "center")
+        .addAttributes(":all", "class", "title", "dir", "lang")
+        .addAttributes("a", "rel", "data-mentionid", "data-ipshover", "data-ipshover-target", "data-yt", "data-fileid")
+        .addAttributes("img", "data-emoticon", "data-ytthumb", "data-fileid", "data-ratio")
+        .addAttributes("blockquote", "data-ipsquote", "data-ipsquote-username", "data-ipsquote-userid",
+            "data-ipsquote-timestamp", "data-ipsquote-contentapp", "data-ipsquote-contenttype",
+            "data-ipsquote-contentclass", "data-ipsquote-contentid", "data-ipsquote-contentcommentid", "data-cite")
+        .addAttributes("div", "data-ipsspoiler")
+        .addAttributes("font", "color", "size", "face")
+        .addProtocols("img", "src", "http", "https", "data")
+        .addProtocols("a", "href", "http", "https", "mailto")
 
     /** The members on one page of a post's "who reacted" list (`?do=showReactionsComment`), and the next page's address. */
     fun likers(document: Document): Pair<List<Liker>, String> {
@@ -888,11 +926,14 @@ object ForumParser {
         .count { image -> image.parents().none { it.normalName() == "blockquote" } }
 
     /** Keeps the app on the forum: any other host becomes the forum's front page; always plain HTTP. */
+    /** f650gs.pl or one of its subdomains: the only hosts that get the session cookies. */
+    fun isForumHost(host: String?): Boolean = host?.lowercase()?.let { it == "f650gs.pl" || it.endsWith(".f650gs.pl") } == true
+
     fun safeForumUrl(value: String): String {
         val resolved = if (value.startsWith("/")) "http://f650gs.pl$value" else value
         val uri = runCatching { java.net.URI(resolved) }.getOrNull() ?: return "http://f650gs.pl/"
         val host = uri.host?.lowercase().orEmpty()
-        if (host != "f650gs.pl" && host != "www.f650gs.pl" && !host.endsWith(".f650gs.pl")) return "http://f650gs.pl/"
+        if (!isForumHost(host)) return "http://f650gs.pl/"
         val path = uri.rawPath.ifBlank { "/" }
         val query = uri.rawQuery?.let { "?$it" }.orEmpty()
         val fragment = uri.rawFragment?.let { "#$it" }.orEmpty()

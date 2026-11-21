@@ -308,6 +308,45 @@ class ForumParserTest {
         assertTrue(html.contains("src=\"http://f650gs.pl/uploads/a.jpg\""))
     }
 
+    @Test fun sanitizerKeepsOnlyAllowedMarkup() {
+        val body = Jsoup.parse(
+            "<div id=b><p>Hej</p><img src='x.png' usemap='#m'><map name='m'><area href='javascript:alert(1)'></map>" +
+                "<meta http-equiv='refresh' content='0;url=http://evil.example/'><link rel='stylesheet' href='http://evil.example/a.css'>" +
+                "<base href='http://evil.example/'><p data-foo='1' class='x'>tekst</p>" +
+                "<blockquote class='ipsQuote' data-ipsquote='' data-ipsquote-username='Ktoś' data-ipsquote-contentcommentid='5'><p>cytat</p></blockquote>" +
+                "<img src='http://f650gs.pl/uploads/emoticons/smile.png' data-emoticon='' alt=':)'>" +
+                "<a href='http://f650gs.pl/profile/1-x/' data-mentionid='1' data-ipshover=''>@x</a></div>",
+            "http://f650gs.pl/topic/1-x/",
+        ).getElementById("b")!!
+        val out = Jsoup.parseBodyFragment(ForumParser.safePostHtml(body))
+        assertEquals(0, out.select("map, area, meta, link, base").size)
+        assertEquals(0, out.select("[data-foo], [usemap]").size)
+        assertEquals("x", out.selectFirst("p.x")!!.className())
+        val quote = out.selectFirst("blockquote.ipsQuote")!!
+        assertEquals("Ktoś", quote.attr("data-ipsquote-username"))
+        assertEquals("5", quote.attr("data-ipsquote-contentcommentid"))
+        // the post's <base href> pointed off the forum: relative addresses fall back to the forum itself
+        assertEquals("http://f650gs.pl/x.png", out.select("img").first()!!.attr("src"))
+        assertEquals(true, out.selectFirst("img[alt=:)]")!!.hasAttr("data-emoticon"))
+        assertEquals("1", out.selectFirst("a[href*=/profile/]")!!.attr("data-mentionid"))
+    }
+
+    @Test fun uploadedVideosBecomePlayCards() {
+        val body = Jsoup.parse(
+            "<div id=b><video controls class='ipsEmbeddedVideo' data-fileid='1'>" +
+                "<source src='http://f650gs.pl/uploads/monthly_2026_11/clip.mp4.abc.mp4' type='video/mp4'>" +
+                "<a class='ipsAttachLink' href='//f650gs.pl/applications/core/interface/file/attachment.php?id=1'>clip.mp4</a></video>" +
+                "<video><source src='javascript:alert(1)'></video></div>",
+            "http://f650gs.pl/topic/1-x/",
+        ).getElementById("b")!!
+        val out = Jsoup.parseBodyFragment(ForumParser.safePostHtml(body))
+        val cards = out.select("a.forumVideoLink")
+        assertEquals(1, cards.size)
+        assertEquals("http://f650gs.pl/uploads/monthly_2026_11/clip.mp4.abc.mp4", cards[0].attr("href"))
+        assertEquals("▶ Odtwórz film: clip.mp4", cards[0].text())
+        assertEquals(0, out.select("video, source").size)
+    }
+
     @Test fun youtubeEmbedsBecomeThumbnailCards() {
         val body = Jsoup.parse(
             "<div id=b><div class='ipsEmbeddedVideo'><div><iframe src='https://www.youtube.com/embed/abc_DEF-123?feature=oembed' title='Jazda &amp; kurz'></iframe></div></div>" +

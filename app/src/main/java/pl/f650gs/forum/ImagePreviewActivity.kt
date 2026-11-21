@@ -38,6 +38,7 @@ class ImagePreviewActivity : Activity() {
         private val TEAL = Color.rgb(0, 102, 177)
         private val LIME = Color.rgb(196, 216, 46)
         private const val MAX_DECODE_EDGE = 4096
+        private const val MAX_IMAGE_BYTES = 40 * 1024 * 1024   // a bigger file would only run the viewer out of memory
         private const val SAVE_PERMISSION_REQUEST = 4201
     }
 
@@ -165,9 +166,8 @@ class ImagePreviewActivity : Activity() {
     private fun load(index: Int) {
         if (bitmaps.containsKey(index) || !loading.add(index)) return
         val url = urls[index]
-        val forumHost = android.net.Uri.parse(url).host.orEmpty().let { it == "f650gs.pl" || it.endsWith(".f650gs.pl") }
         Thread {
-            val bitmap = runCatching { download(url, if (forumHost) cookies else "") }.getOrNull()
+            val bitmap = runCatching { download(url) }.getOrNull()
             main.post {
                 loading.remove(index)
                 if (closed || index !in current - 1..current + 1) return@post
@@ -188,7 +188,15 @@ class ImagePreviewActivity : Activity() {
             requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), SAVE_PERMISSION_REQUEST)
             return
         }
-        val uri = android.net.Uri.parse(urls.getOrNull(current) ?: return)
+        val address = urls.getOrNull(current) ?: return
+        Thread {
+            val final = runCatching { finalAddress(address) }.getOrDefault(address)
+            main.post { if (!closed) enqueueSave(android.net.Uri.parse(final)) }
+        }.start()
+    }
+
+    /** Hands [uri] (already the final address) to the download manager; forum cookies only for the forum. */
+    private fun enqueueSave(uri: android.net.Uri) {
         val name = photoFileName(uri)
         val request = android.app.DownloadManager.Request(uri)
             .setTitle(name)
@@ -198,7 +206,7 @@ class ImagePreviewActivity : Activity() {
             .addRequestHeader("User-Agent", "F650GSForum/0.7 (Android; native reader)")
         val host = uri.host.orEmpty()
         // Photos on the forum itself may be visible to members only.
-        if ((host == "f650gs.pl" || host.endsWith(".f650gs.pl")) && cookies.isNotBlank()) request.addRequestHeader("Cookie", cookies)
+        if (ForumParser.isForumHost(host) && cookies.isNotBlank()) request.addRequestHeader("Cookie", cookies)
         @Suppress("DEPRECATION")
         if (android.os.Build.VERSION.SDK_INT < 29) request.allowScanningByMediaScanner()
         val saved = runCatching { getSystemService(android.app.DownloadManager::class.java).enqueue(request) }.isSuccess
@@ -221,24 +229,47 @@ class ImagePreviewActivity : Activity() {
         else android.widget.Toast.makeText(this, "Bez zgody na pamięć nie da się zapisać zdjęcia.", android.widget.Toast.LENGTH_LONG).show()
     }
 
-    private fun download(url: String, cookies: String): Bitmap? {
+    /** A connection to [url] that sends the session cookies only when [url] is on the forum (checked on every hop). */
+    private fun open(url: String) = (URL(url).openConnection() as HttpURLConnection).apply {
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        instanceFollowRedirects = false
+        setRequestProperty("User-Agent", "F650GSForum/0.7 (Android; native reader)")
+        if (ForumParser.isForumHost(this.url.host) && cookies.isNotBlank()) setRequestProperty("Cookie", cookies)
+    }
+
+    /** Where a redirect from [location] points, or null; [connection] is the answer that may carry it. */
+    private fun redirect(location: String, connection: HttpURLConnection): String? =
+        if (connection.responseCode !in 300..399) null
+        else connection.getHeaderField("Location")?.let { runCatching { URL(URL(location), it).toString() }.getOrNull() }
+
+    /**
+     * Where [url] finally leads, after up to 5 redirects followed with [open] (cookies only on forum hops), so the
+     * download manager gets the final address and the forum cookies only if that address is on the forum.
+     */
+    private fun finalAddress(url: String): String {
         var location = url
         repeat(5) {
-            val connection = (URL(location).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
-                readTimeout = 30_000
-                instanceFollowRedirects = false
-                setRequestProperty("User-Agent", "F650GSForum/0.7 (Android; native reader)")
-                if (cookies.isNotBlank()) setRequestProperty("Cookie", cookies)
+            val connection = open(location)
+            try {
+                location = redirect(location, connection) ?: return location
+            } finally {
+                connection.disconnect()
             }
+        }
+        return location
+    }
+
+    private fun download(url: String): Bitmap? {
+        var location = url
+        repeat(5) {
+            val connection = open(location)
             try {
                 // Follow redirects manually so an http → https hop on image hosts works.
-                if (connection.responseCode in 300..399) {
-                    location = URL(URL(location), connection.getHeaderField("Location") ?: return null).toString()
-                    return@repeat
-                }
+                redirect(location, connection)?.let { location = it; return@repeat }
                 if (connection.responseCode != 200) return null
-                val bytes = connection.inputStream.use { it.readBytes() }
+                if (connection.contentLengthLong > MAX_IMAGE_BYTES) return null
+                val bytes = connection.inputStream.use { it.readAtMost(MAX_IMAGE_BYTES) } ?: return null
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                 var sample = 1

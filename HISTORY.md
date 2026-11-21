@@ -105,6 +105,8 @@
 - Staff view: hidden and waiting-for-approval posts carry a "🚫 Ukryty" / "⏳ Do zatwierdzenia" badge and a dashed card.
 - Photo picker takes as many photos as the system allows (was 10).
 - Unread topics: titles without the forum's "first unread post" badge; background photo look-ups read as a guest, so they no longer mark topics read.
+- Films uploaded to posts show as a "▶ Odtwórz film" card that opens the system player (were an empty post).
+- Security: post HTML goes through an allowlist; forum cookies and redirects stay on f650gs.pl; the update installer only accepts its own session; image and avatar downloads are size-capped.
 
 ## Known limitations
 

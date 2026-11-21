@@ -21,6 +21,8 @@ import java.net.URL
 internal const val UPDATE_INFO_URL = "https://ed7fanboy.github.io/f650gs/version.json"
 internal const val ACTION_INSTALL_STATUS = "pl.f650gs.forum.INSTALL_STATUS"
 private const val KEY_UPDATE_CHECKED = "update_checked_at"
+private const val KEY_INSTALL_NONCE = "install_nonce"
+private const val EXTRA_INSTALL_NONCE = "pl.f650gs.forum.INSTALL_NONCE"
 private const val DAY_MS = 24L * 60 * 60 * 1000
 
 /** What version.json says: the newest version and where its APK is. */
@@ -168,7 +170,12 @@ private fun MainActivity.installApk(file: File) = runCatching {
         file.inputStream().use { input ->
             it.openWrite("f650gs.apk", 0, file.length()).use { output -> input.copyTo(output); it.fsync(output) }
         }
+        // MainActivity is exported, so any app could send ACTION_INSTALL_STATUS with an intent of its choice to start;
+        // only an answer carrying this session's secret is taken as the installer's.
+        val nonce = java.util.UUID.randomUUID().toString()
+        getSharedPreferences(MainActivity.PREFS, android.content.Context.MODE_PRIVATE).edit().putString(KEY_INSTALL_NONCE, nonce).apply()
         val callback = Intent(this, MainActivity::class.java).setAction(ACTION_INSTALL_STATUS).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(EXTRA_INSTALL_NONCE, nonce)
         // Mutable: the installer adds the status (and its confirmation screen) to this intent.
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
         it.commit(PendingIntent.getActivity(this, 4202, callback, flags).intentSender)
@@ -178,13 +185,24 @@ private fun MainActivity.installApk(file: File) = runCatching {
 
 /** The installer's answer: show its confirmation screen, or say why it failed. */
 internal fun MainActivity.handleInstallStatus(intent: Intent) {
+    val prefs = getSharedPreferences(MainActivity.PREFS, android.content.Context.MODE_PRIVATE)
+    val expected = prefs.getString(KEY_INSTALL_NONCE, null)
+    if (expected == null || intent.getStringExtra(EXTRA_INSTALL_NONCE) != expected) return   // not our installer session
     when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
         PackageInstaller.STATUS_PENDING_USER_ACTION -> {
             val confirm = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                 else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
-            confirm?.let { runCatching { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
+            // The system installer's screen only: never one of this app's own screens, never a file-access grant.
+            // (resolveActivity alone can be null for the installer under Android 11+ package visibility; the secret above
+            // is the real check)
+            val target = confirm?.component?.packageName ?: confirm?.`package` ?: confirm?.resolveActivity(packageManager)?.packageName
+            if (confirm == null || target == packageName) return
+            confirm.flags = confirm.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION).inv()
+            runCatching { startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            return   // the installer answers again (success / failure) with the same secret
         }
-        PackageInstaller.STATUS_SUCCESS -> Unit
+        PackageInstaller.STATUS_SUCCESS -> prefs.edit().remove(KEY_INSTALL_NONCE).apply()
         PackageInstaller.STATUS_FAILURE_ABORTED -> Unit
         else -> toast("Instalacja nie powiodła się: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE).orEmpty()}")
     }

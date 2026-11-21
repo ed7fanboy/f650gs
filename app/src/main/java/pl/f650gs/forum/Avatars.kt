@@ -72,7 +72,7 @@ object Avatars {
         }
         try {
             if (connection.responseCode != 200) return null
-            return connection.inputStream.use { it.readBytes() }
+            return connection.inputStream.use { it.readAtMost(4 * 1024 * 1024) }   // avatars are small; never load a huge file
         } finally {
             connection.disconnect()
         }
