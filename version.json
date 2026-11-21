@@ -1,6 +1,7 @@
 {
- "versionCode": 52,
- "versionName": "0.21.1",
+ "versionCode": 53,
+ "versionName": "0.21.2",
  "apk": "https://ed7fanboy.github.io/f650gs/f650gs.apk",
- "sha256": "93d3b6f66496df236dc89cba7bb359dfd44e1260d5b73dc7159d6c13ceefcb5f"
+ "sha256": "c950740572195668292af3d894be5ecc1c15c174201c9e1e87af32b958bbbaba",
+ "minVersionCode": 53
 }
