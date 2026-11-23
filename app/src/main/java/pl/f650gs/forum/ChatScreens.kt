@@ -466,16 +466,18 @@ internal fun MainActivity.sendPrivateMessage() {
     val body = postHtml(chatInput.text)
     if (!beginSending()) return
     io.execute {
-        val result = runCatching {
-            repository.sendReply(page.replyForm ?: error("Forum nie udostępnia formularza odpowiedzi."), body)
-            repository.conversation(page.url)
-        }
+        val sent = runCatching { repository.sendReply(page.replyForm ?: error("Forum nie udostępnia formularza odpowiedzi."), body) }
+        // Reloading is a separate step: when only the reload fails, the message is out and must not look unsent
+        // (the text stayed in the box and sending it again made a duplicate).
+        val updated = if (sent.isSuccess) runCatching { repository.conversation(page.url) } else null
         main.post {
             endSending()
-            result.onSuccess { updated ->
+            sent.onSuccess {
                 chatInput.setText("")
                 setComposerFull(false)
-                if (currentScreen is Screen.Conversation) renderConversation(updated)
+                updated?.onSuccess { if (currentScreen is Screen.Conversation) renderConversation(it) }?.onFailure {
+                    android.widget.Toast.makeText(this, "Wysłano. Nie udało się odświeżyć rozmowy.", android.widget.Toast.LENGTH_LONG).show()
+                }
             }.onFailure {
                 android.widget.Toast.makeText(this, it.localizedMessage ?: "Nie udało się wysłać wiadomości.", android.widget.Toast.LENGTH_LONG).show()
             }

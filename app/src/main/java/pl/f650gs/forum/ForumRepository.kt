@@ -52,7 +52,7 @@ class ForumRepository {
             Regex("""comment[-=](\d+)""").find(location)?.let { focus = it.groupValues[1].toLong() }
             val next = current.header("Location")
             if (current.statusCode() !in 300..399 || next.isNullOrBlank()) { response = current; break }
-            location = safeForumUrl(java.net.URI(location).resolve(next).toString())
+            location = safeForumUrl(redirectTarget(location, next).toString())
         }
         val document = (response ?: connect(location, asGuest).fetch()).parse()
         return ForumParser.topic(document, location.substringBefore('#'), focus)
@@ -401,16 +401,21 @@ class ForumRepository {
      * Runs the request with redirects followed by hand and only within the forum. Jsoup's own redirects send the
      * session cookies to whatever host a Location header names; a redirect off the forum ends with an error.
      * Like a browser, 301/302/303 continue as a GET without the form data; 307/308 keep the method.
+     *
+     * Jsoup checks the content type of every response it returns, and with its own redirects off that includes
+     * each redirect. IPS sends redirects with an empty media type (`Content-Type: ;charset=UTF-8`), which Jsoup
+     * rejects ("Unhandled content type"), so the check is switched off for the hops and done here on the final page,
+     * as Jsoup's own redirect handling does.
      */
     private fun org.jsoup.Connection.fetch(): org.jsoup.Connection.Response {
+        val checkType = !request().ignoreContentType()
         followRedirects(false)
+        ignoreContentType(true)
         var response = execute()
         repeat(MAX_REDIRECTS) {
-            if (response.statusCode() !in 300..399) return response
+            if (response.statusCode() !in 300..399) return response.also { if (checkType) requireTextType(it) }
             val next = response.header("Location")?.trim()?.takeIf { it.isNotEmpty() } ?: return response
-            val target = runCatching { java.net.URI(response.url().toString()).resolve(next.replace(" ", "%20")) }.getOrNull()
-                ?: error("Nieprawidłowe przekierowanie forum.")
-            if (!ForumParser.isForumHost(target.host)) error("Forum przekierowało poza f650gs.pl (${target.host}).")
+            val target = redirectTarget(response.url().toString(), next)
             if (response.statusCode() !in setOf(307, 308)) {
                 request().method(org.jsoup.Connection.Method.GET)
                 request().data().clear()
@@ -422,6 +427,26 @@ class ForumRepository {
             response = execute()
         }
         error("Forum przekierowuje w kółko.")
+    }
+
+    /**
+     * The forum address a redirect's Location header [next] points to from [from]. Locations may carry raw spaces,
+     * which java.net.URI rejects; a target off the forum is an error, so cookies never leave f650gs.pl.
+     */
+    private fun redirectTarget(from: String, next: String): java.net.URI {
+        val target = runCatching { java.net.URI(from).resolve(next.trim().replace(" ", "%20")) }.getOrNull()
+            ?: error("Nieprawidłowe przekierowanie forum.")
+        if (!ForumParser.isForumHost(target.host)) error("Forum przekierowało poza f650gs.pl (${target.host}).")
+        return target
+    }
+
+    /** Jsoup's own rule for pages it parses: text or XML, or no content type at all. */
+    private fun requireTextType(response: org.jsoup.Connection.Response) {
+        val type = response.contentType() ?: return
+        val text = type.startsWith("text/", ignoreCase = true) ||
+            Regex("""(?i)^[^/;]+/(?:xml(?:-[^/;]+)?|[^/;]+\+xml)(?:\s*;.*)?$""").matches(type)
+        if (!text) throw org.jsoup.UnsupportedMimeTypeException(
+            "Unhandled content type. Must be a text or XML media type", type, response.url().toString())
     }
 
 

@@ -108,6 +108,7 @@
 - Films uploaded to posts show as a "▶ Odtwórz film" card that opens the system player (were an empty post).
 - Security: post HTML goes through an allowlist; forum cookies and redirects stay on f650gs.pl; the update installer only accepts its own session; image and avatar downloads are size-capped.
 - Required updates: when the landing page marks a version as no longer safe, the update offer cannot be dismissed and is shown on every start (from 0.21.2 on).
+- Sending replies, messages, topics and forms no longer ends in "Unhandled content type" after the forum has saved them (0.21.1 to 0.21.2 type-checked the forum's redirects, which carry an empty content type); a message whose conversation fails to reload no longer looks unsent.
 
 ## Known limitations
 
